@@ -10,6 +10,8 @@
 #define __AVR_ATmega328P__ 1
 
 #include <avr/io.h>
+#include <avr/sleep.h>
+#include <avr/power.h>
 #include <util/delay.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,12 +34,13 @@ static uint8_t find_file_in_dir(fat_fs_struct* fs, fat_dir_struct* dd, const cha
 static fat_file_struct* open_file_in_dir(fat_fs_struct* fs, fat_dir_struct* dd, const char* name);
 static void loadBMP(fat_fs_struct *fs, fat_dir_struct* dd, const char* file, 
 		fat_file_struct *fd, int16_t *width, int16_t *height);
-//static void drawBMP24(fat_fs_struct* fs, fat_dir_struct* dd, const char* file);
 static void drawBMP16(fat_file_struct *fd, const uint16_t x, const uint16_t y, 
 		const int16_t width, const int16_t height);
 static void drawPartBMP16(fat_file_struct *fd, const uint16_t x, const uint16_t y, 
 		const uint16_t drawWidth, const uint16_t drawHeight, const uint16_t imgX, 
 		const uint16_t imgY, const int16_t imgWidth, const int16_t imgHeight);
+static void lowPowerMode();
+static void normalMode();
 
 const uint8_t HEADERSIZE = 70;	// 54 header + 16 color mask
 const uint8_t LCDWIDTH = 128;
@@ -45,13 +48,17 @@ const uint8_t LCDHEIGHT = 160;
 const uint16_t BUFFERSIZE = 128 * 2;
 uint8_t buffer[BUFFERSIZE]; // Not really the best way...
 
+bool powerMode = false;
+
 int main() {
+	// Turn on interrupt for power on
+	DDRD &= ~(1 << DDD2);
+	PORTD |= (1 << PORTD2);
+	//EICRA |= (1 << ISC00);
+	EIMSK |= (1 << INT0);	// Turns on INT0
+
 	// Init communication
 	UART::initUART(9600, true);
-
-	// start up led sequence
-	DDRD = 0xFE;
-	PORTD = 0x00;
 
 	DDRC = 0xFF;
 	PORTC = 0x02;
@@ -66,22 +73,24 @@ int main() {
 	LCD::setOrientation(0);
 	LCD::clearDisp();
 
+	// Setup PWM for LCD brightness
+	TCCR0A |= (1 << WGM00) | (1 << WGM01) | (1 << COM0A1);
+	TCCR0B |= (1 << CS01);
+	DDRD |= (1 << PD6); // This is on PD6
+	OCR0A = 128;
+
 	PORTC = 0x01;
 
 	// Init SD communication
 	if (!sd_raw_init()) {
 		// failed MMC/SD init
-		PORTC = 0x02;
-		LCD::putCh('A',20,50,BLACK);
-		PORTC = 0x01;
 	}
 
 	partition_struct *partition = partition_open(sd_raw_read,
 												 sd_raw_read_interval,
 												 0, 0, 0);
 
-	if (!partition)
-	{
+	if (!partition)	{
 		// Failed to open partition
 	}
 
@@ -98,17 +107,6 @@ int main() {
 	if (!dd) {
 		// failed to open root directory
 	}
-
-	// directory listing
-	/*fat_dir_entry_struct dir_entry;
-	uint8_t y = 10;
-	while (fat_read_dir(dd, &dir_entry)) {
-		//  dir_entry.long_name
-		PORTC = 0x02;
-		LCD::drawString(dir_entry.long_name, 50, y, BLACK);
-		y += 10;
-		PORTC = 0x01;
-	}*/
 
 	// Read the trail file
 	// This file holds the geo-referencing, waypoint data
@@ -140,26 +138,14 @@ int main() {
 		| (uint32_t)buffer[14] << 16 | (uint32_t)buffer[15] << 24;
 	memcpy(&scaleY, &temp, sizeof(scaleY));
 
-	/*intptr_t count;
-	while ((count = fat_read_file(fd, buffer, sizeof(buffer))) > 0)
-	{
-		for (intptr_t i = 0; i < count; ++i) 
-		{
-			PORTC = 0x02;
-			LCD::drawString(buffer, 8, 50, 60, BLACK);
-			PORTC = 0x01;
-		}
-	}*/
 	fat_close_file(fd);
 
+	// Load the BMP image
 	int16_t imgWidth, imgHeight;
 	loadBMP(fs, dd, "ABQ.bmp", fd, &imgWidth, &imgHeight);
 
-	//uint8_t x = 0, velx = 4, vely = 4;
-	//y = 40;
 	uint16_t imgX, imgY;
 	uint8_t drawX, drawY, lastDrawX = 0, lastDrawY = 0;
-	//uint8_t velx=4, vely=4, x=0, y=20;
 	uint16_t offsetX, offsetY;
 	uint16_t lastOffsetX = 0, lastOffsetY = 0;
 
@@ -176,8 +162,6 @@ int main() {
 			drawY = (imgY % 80) + 40;
 
 			// Logic on where to draw here
-			//offsetX = (imgX / 128) * 128;
-			//offsetY = (imgY / 160) * 160;	// Because BMP are bott to top
 			offsetX = (imgX / 64) * 64 - 32;
 			offsetY = (imgY / 80) * 80 - 40;	// Because BMP are bott to top
 			if (lastOffsetX != offsetX || lastOffsetY != offsetY) {
@@ -188,10 +172,10 @@ int main() {
 				LCD::setOrientation(0);
 				LCD::drawString(gpsdata.latStr, 5, 5, BLACK);
 				LCD::drawString(gpsdata.longStr, 5, 15, BLACK);
-				// Just blink
+				// Just blink the square
 				drawPartBMP16(fd, lastDrawX-8, lastDrawY-8, 16, 16, 
 						offsetX, offsetY, imgWidth, imgHeight);
-				_delay_ms(200);
+				_delay_ms(200);	// Avoid this...timers?
 				LCD::fillRect(drawX-4, drawY-4, drawX+4, drawY+4, LIME);
 				_delay_ms(200);
 			}
@@ -227,6 +211,9 @@ int main() {
 
 			redraw = true;
 		}
+
+		// Logic to determine low power modes
+		// Input reading...
 	}
 	fat_close_file(fd);	// Close the image
 	return 0;
@@ -335,47 +322,41 @@ fat_file_struct* open_file_in_dir(fat_fs_struct* fs,
 	return fat_open_file(fs, &file_entry);
 }
 
-/*void drawBMP24(fat_fs_struct* fs, fat_dir_struct* dd, const char* file)
+void lowPowerMode()
 {
-	
-	// Read the file
-	fat_file_struct *fd = open_file_in_dir(fs, dd, file);
-	if (!fd) {
-		// Error opening file
+	// Set the LCD to sleep mode
+	LCD::writeCmd(SLPIN);
+
+	// Set the GPS to low power mode
+	GPS::enterStandby();
+
+	// Set the AVR to low power
+
+	TCCR0A = 0;
+	TCCR0B = 0;	// Turn off the PWM
+
+	_delay_ms(500);
+}
+
+void normalMode()
+{
+	LCD::writeCmd(SLPOUT);
+
+	GPS::wakeup();
+
+	TCCR0A |= (1 << WGM00) | (1 << WGM01) | (1 << COM0A1);
+	TCCR0B |= (1 << CS01);
+	_delay_ms(500);
+}
+
+ISR (INT0_vect)
+{
+	if (!powerMode) {
+		// Turn on the processor
+		lowPowerMode();
+		powerMode = true;
+	} else {
+		normalMode();
+		powerMode = false;
 	}
-
-	// Read the bmp header
-	const uint8_t HEADERSIZE = 54;
-	const uint16_t BUFFERSIZE = 128 * 3;
-	const uint8_t LCDWIDTH = 128;
-	const uint8_t LCDHEIGHT = 160;
-	uint8_t buffer[BUFFERSIZE]; // Not really the best way...
-
-	intptr_t count;
-	count = fat_read_file(fd, buffer, HEADERSIZE);
-	uint32_t width = buffer[18] | (((uint32_t)buffer[19]) << 8) | 
-		(((uint32_t)buffer[20]) << 16) | (((uint32_t)buffer[21]) << 24);
-	uint32_t height = buffer[22] | (((uint32_t)buffer[23]) << 8) | 
-		(((uint32_t)buffer[24]) << 16) | (((uint32_t)buffer[26]) << 24);
-
-	// Now lets get the pixel data
-	// Organized bottom to top, left to right
-	uint16_t color = 0;
-	uint8_t rgb, row, col;
-	for (row = 0; row < LCDHEIGHT; ++row) {
-		count = fat_read_file(fd, buffer, sizeof(buffer));
-		for (col = 0; col < LCDWIDTH; ++col) {
-			rgb = buffer[3*(col)];
-			color = (((int)((rgb) / 8.0f)&0x001F) << 11);
-			rgb = buffer[3*(col) + 1];
-			color |= (((uint16_t)((rgb) / 4.0f)&0x003F) << 5);
-			rgb = buffer[3*(col) + 2];
-			color |= ((uint16_t)(rgb / 8.0f)&0x001F);
-			PORTC = 0x02;
-			LCD::drawPixel(col, LCDHEIGHT - row - 1, color);
-			PORTC = 0x01;
-		}
-	}
-
-	fat_close_file(fd);
-}*/
+}

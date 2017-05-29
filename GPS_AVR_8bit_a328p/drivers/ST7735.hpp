@@ -12,6 +12,7 @@
 
 // Definitions for LCD cmds
 #define SWRESET 	0x01	// Software reset
+#define SLPIN		0x10	// Sleep in
 #define SLPOUT 		0x11	// Sleep out
 #define DISPOFF 	0x28	// Display off
 #define DISPON 		0x29	// Display on

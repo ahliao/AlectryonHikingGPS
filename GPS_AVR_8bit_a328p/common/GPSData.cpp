@@ -84,4 +84,29 @@ namespace GPS
 		}
 		return response;
 	}
+
+	// Set the output statement frequencies
+	// Sets so only NMEA GGA statements are 1 per fix
+	void setOutputs()
+	{
+		char str[] = "$PMTK314,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*2C\r\n";
+		for (uint8_t i = 0; i < strlen(str); ++i) {
+			UART::writeByte(str[i]);
+		}
+	}
+
+	// Set GPS into standby mode for power saving
+	void enterStandby()
+	{
+		char str[] = "$PMTK161,0*28\r\n";
+		for (uint8_t i = 0; i < strlen(str); ++i) {
+			UART::writeByte(str[i]);
+		}
+	}
+
+	// Wake up by sending any byte
+	void wakeup()
+	{
+		UART::writeByte('a');
+	}
 }

@@ -32,6 +32,15 @@ namespace GPS
 
 	// Load the GPS data from UART
 	NMEA loadData(GPSData &gpsdata);
+
+	// Set the output statement frequencies
+	void setOutputs();
+
+	// Set GPS into standby mode for power saving
+	void enterStandby();
+
+	// Wake up by sending any byte
+	void wakeup();
 }
 
 #endif
