@@ -36,3 +36,7 @@ GPS_AVR_8bit_a328p/obj
 # Documentation directory
 documentation
 
+# Private files
+*.bmp
+*.txt
+

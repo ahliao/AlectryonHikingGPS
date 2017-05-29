@@ -5,6 +5,7 @@ namespace GPS
 	static char GPSBuffer[100];
 	static uint8_t readIndex = 0;
 	static char *token;
+	static char *deg;
 
 	NMEA loadData(GPSData &gpsdata) {
 		NMEA response = NONE;
@@ -26,8 +27,13 @@ namespace GPS
 
 					// Latitude of position
 					token = strtok(NULL, ",");
+					gpsdata.latStr = token;
 					//token = strcat(token, strtok(NULL, ","));
-					gpsdata.latitude = atof(token);
+					// First take the integer value divide 100
+					gpsdata.latitude = atoi(token)/100;
+					deg = strrchr(token, '.');
+					deg -= 2;
+					gpsdata.latitude += atof(deg)/60;
 
 					// North or South (South is negative)
 					token = strtok(NULL, ",");
@@ -36,8 +42,12 @@ namespace GPS
 
 					// Longitude of position
 					token = strtok(NULL, ",");
+					gpsdata.longStr = token;
 					//token = strcat(token, strtok(NULL, ","));
-					gpsdata.longitude = atof(token);
+					gpsdata.longitude = atoi(token)/100;
+					deg = strrchr(token, '.');
+					deg -= 2;
+					gpsdata.longitude += atof(deg)/60;
 
 					// East or West (West is negative)
 					token = strtok(NULL, ",");

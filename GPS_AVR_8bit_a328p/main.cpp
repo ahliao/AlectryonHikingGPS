@@ -100,7 +100,7 @@ int main() {
 	}
 
 	// directory listing
-	fat_dir_entry_struct dir_entry;
+	/*fat_dir_entry_struct dir_entry;
 	uint8_t y = 10;
 	while (fat_read_dir(dd, &dir_entry)) {
 		//  dir_entry.long_name
@@ -108,20 +108,39 @@ int main() {
 		LCD::drawString(dir_entry.long_name, 50, y, BLACK);
 		y += 10;
 		PORTC = 0x01;
-	}
+	}*/
 
-	// Read a file
-	fat_file_struct *fd = open_file_in_dir(fs, dd, "test.txt");
+	// Read the trail file
+	// This file holds the geo-referencing, waypoint data
+	// Format: 
+	// 4 bytes = lat of x0
+	// 4 bytes = long of y0
+	// 4 bytes = scale X (lat per pixel)
+	// 4 bytes = scale Y (long per pixel)
+	fat_file_struct *fd = open_file_in_dir(fs, dd, "ABQ.trail");
 	if (!fd) {
 		// Error opening file
 		PORTC = 0x02;
 		LCD::drawString("Error", 50, 70, BLACK);
 		PORTC = 0x01;
 	}
+	uint8_t buffer[16];
+	fat_read_file(fd, buffer, sizeof(buffer));
+	float x0, y0, scaleX, scaleY;
+	temp = (uint32_t)buffer[0] | (uint32_t)buffer[1] << 8 
+		| (uint32_t)buffer[2] << 16 | (uint32_t)buffer[3] << 24;
+	memcpy(&x0, &temp, sizeof(x0));
+	temp = (uint32_t)buffer[4] | (uint32_t)buffer[5] << 8 
+		| (uint32_t)buffer[6] << 16 | (uint32_t)buffer[7] << 24;
+	memcpy(&y0, &temp, sizeof(y0));
+	temp = (uint32_t)buffer[8] | (uint32_t)buffer[9] << 8 
+		| (uint32_t)buffer[10] << 16 | (uint32_t)buffer[11] << 24;
+	memcpy(&scaleX, &temp, sizeof(scaleX));
+	temp = (uint32_t)buffer[12] | (uint32_t)buffer[13] << 8 
+		| (uint32_t)buffer[14] << 16 | (uint32_t)buffer[15] << 24;
+	memcpy(&scaleY, &temp, sizeof(scaleY));
 
-	uint8_t buffer[8];
-
-	intptr_t count;
+	/*intptr_t count;
 	while ((count = fat_read_file(fd, buffer, sizeof(buffer))) > 0)
 	{
 		for (intptr_t i = 0; i < count; ++i) 
@@ -130,37 +149,62 @@ int main() {
 			LCD::drawString(buffer, 8, 50, 60, BLACK);
 			PORTC = 0x01;
 		}
-	}
+	}*/
 	fat_close_file(fd);
 
 	int16_t imgWidth, imgHeight;
-	loadBMP(fs, dd, "Pino.bmp", fd, &imgWidth, &imgHeight);
-	// Logic on where to draw here
-	drawBMP16(fd, 0, 0, imgWidth, imgHeight);
+	loadBMP(fs, dd, "ABQ.bmp", fd, &imgWidth, &imgHeight);
 
+	//uint8_t x = 0, velx = 4, vely = 4;
+	//y = 40;
+	uint16_t imgX, imgY;
+	uint8_t drawX, drawY, lastDrawX = 0, lastDrawY = 0;
+	//uint8_t velx=4, vely=4, x=0, y=20;
+	uint16_t offsetX, offsetY;
+	uint16_t lastOffsetX = 0, lastOffsetY = 0;
 
-	uint8_t x = 0, velx = 4, vely = 4;
-	y = 40;
+	bool redraw = false;
 
 	while (1) {
-		LCD::fillRect(x, y, x+8, y+8, MAGENTA);
-		_delay_ms(100);
-
-		drawPartBMP16(fd, x, y, 8, 8, 0, 0, imgWidth, imgHeight);
-		x += velx;
-		y += vely;
-		if (x >= 124 || x <= 0) velx *= -1;
-		if (y >= 156 || y <= 0) vely *= -1;
-		// heartbeat pin for confirmation of upload
-		/*PORTD ^= 1 << heartBeatPin;
-		_delay_ms(100);
-		PORTD ^= 1 << heartBeatPin;
-		_delay_ms(100);*/
-
 		response = GPS::loadData(gpsdata);
 
+		if (redraw) {
+			// Draw the GPS location
+			imgX = (uint16_t)((float)abs((gpsdata.latitude - x0) / scaleX));
+			imgY = (uint16_t)((float)abs((gpsdata.longitude - y0) / scaleY));
+			drawX = (imgX % 64) + 32;
+			drawY = (imgY % 80) + 40;
+
+			// Logic on where to draw here
+			//offsetX = (imgX / 128) * 128;
+			//offsetY = (imgY / 160) * 160;	// Because BMP are bott to top
+			offsetX = (imgX / 64) * 64 - 32;
+			offsetY = (imgY / 80) * 80 - 40;	// Because BMP are bott to top
+			if (lastOffsetX != offsetX || lastOffsetY != offsetY) {
+				drawBMP16(fd, offsetX, offsetY, imgWidth, imgHeight);
+				LCD::fillRect(drawX-4, drawY-4, drawX+4, drawY+4, LIME);
+			} else {
+				// Draw the lat and long text
+				LCD::setOrientation(0);
+				LCD::drawString(gpsdata.latStr, 5, 5, BLACK);
+				LCD::drawString(gpsdata.longStr, 5, 15, BLACK);
+				// Just blink
+				drawPartBMP16(fd, lastDrawX-8, lastDrawY-8, 16, 16, 
+						offsetX, offsetY, imgWidth, imgHeight);
+				_delay_ms(200);
+				LCD::fillRect(drawX-4, drawY-4, drawX+4, drawY+4, LIME);
+				_delay_ms(200);
+			}
+
+			redraw = false;
+			lastOffsetX = offsetX;
+			lastOffsetY = offsetY;
+			lastDrawX = drawX;
+			lastDrawY = drawY;
+		}
+
 		if (response == GPS::GPGGA) {
-			UART::writeByte('A');
+			/*UART::writeByte('A');
 			// Send the status
 			UART::writeByte(gpsdata.status);
 
@@ -179,7 +223,9 @@ int main() {
 			UART::writeByte(temp);
 
 			UART::writeByte('\r');
-			UART::writeByte('\n');
+			UART::writeByte('\n');*/
+
+			redraw = true;
 		}
 	}
 	fat_close_file(fd);	// Close the image
@@ -192,7 +238,7 @@ void drawBMP16(fat_file_struct *fd, const uint16_t x, const uint16_t y,
 {
 	// Now lets get the pixel data
 	// Organized bottom to top, left to right
-	int32_t offset=(int32_t)(128*2)*y*2+x*2 + HEADERSIZE;	
+	int32_t offset=(int32_t)(width)*y*2+x*2 + HEADERSIZE;	
 	uint16_t color;
 	uint8_t row, col, temp;
 
@@ -200,7 +246,7 @@ void drawBMP16(fat_file_struct *fd, const uint16_t x, const uint16_t y,
 
 	PORTC = 0x02;
 	LCD::setOrientation(4);
-	LCD::setAddrWindow(0, 0, 128, 160);
+	LCD::setAddrWindow(0, 0, LCDWIDTH, LCDHEIGHT);
 	LCD::writeCmd(RAMWR);
 	for (row = 0; row < LCDHEIGHT; ++row) {
 		PORTC = 0x01;
@@ -212,7 +258,6 @@ void drawBMP16(fat_file_struct *fd, const uint16_t x, const uint16_t y,
 			temp = col << 1;	// Divide by 2
 			color = buffer[temp];
 			color |= buffer[temp+1]<<8;
-			//LCD::drawPixel(col, LCDHEIGHT - row - 1, color);
 			LCD::sendSPI(color >> 8);
 			LCD::sendSPI(color);
 		}
@@ -225,14 +270,14 @@ void drawPartBMP16(fat_file_struct *fd, const uint16_t x, const uint16_t y,
 {
 	// Now lets get the pixel data
 	// Organized bottom to top, left to right
-	int32_t offset=(int32_t)(128*2)*(imgY+y)*2+(imgX+x)*2 + HEADERSIZE;	
+	int32_t offset=(int32_t)(imgWidth)*(imgY+y)*2+(imgX+x)*2 + HEADERSIZE;	
 	uint16_t color;
 	uint8_t row, col, temp;
 
 	fat_seek_file(fd, &offset, FAT_SEEK_SET);
 
 	PORTC = 0x02;
-	//LCD::setOrientation(4);
+	LCD::setOrientation(4);
 	LCD::setAddrWindow(x, y, x+drawWidth, y+drawHeight);
 	LCD::writeCmd(RAMWR);
 	for (row = 0; row <= drawHeight; ++row) {
@@ -247,7 +292,6 @@ void drawPartBMP16(fat_file_struct *fd, const uint16_t x, const uint16_t y,
 			color |= buffer[temp+1]<<8;
 			LCD::sendSPI(color >> 8);
 			LCD::sendSPI(color);
-			//LCD::drawPixel(x+col, y+row, BLACK);
 		}
 	}
 }

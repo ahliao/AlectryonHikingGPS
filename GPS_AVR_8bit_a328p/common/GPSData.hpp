@@ -26,6 +26,8 @@ namespace GPS
 		float HDOP;	// Horizontal dilution of precision
 		float longitude; // llll.ll (without the decimal, sign represents N or S)
 		float latitude; // yyyy.yy 
+		char *longStr;
+		char *latStr;
 	};
 
 	// Load the GPS data from UART
