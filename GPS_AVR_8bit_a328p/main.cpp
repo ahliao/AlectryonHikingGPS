@@ -30,14 +30,17 @@
 #define heartBeatPin 6
 
 // function prototypes
-static uint8_t find_file_in_dir(fat_fs_struct* fs, fat_dir_struct* dd, const char* name, fat_dir_entry_struct* dir_entry);
-static fat_file_struct* open_file_in_dir(fat_fs_struct* fs, fat_dir_struct* dd, const char* name);
+static uint8_t find_file_in_dir(fat_fs_struct* fs, fat_dir_struct* dd, 
+		const char* name, fat_dir_entry_struct* dir_entry);
+static fat_file_struct* open_file_in_dir(fat_fs_struct* fs, 
+		fat_dir_struct* dd, const char* name);
 static void loadBMP(fat_fs_struct *fs, fat_dir_struct* dd, const char* file, 
 		fat_file_struct *fd, int16_t *width, int16_t *height);
-static void drawBMP16(fat_file_struct *fd, const uint16_t x, const uint16_t y, 
-		const int16_t width, const int16_t height);
-static void drawPartBMP16(fat_file_struct *fd, const uint16_t x, const uint16_t y, 
-		const uint16_t drawWidth, const uint16_t drawHeight, const uint16_t imgX, 
+static void drawBMP16(fat_file_struct *fd, const uint16_t x, 
+		const uint16_t y, const int16_t width, const int16_t height);
+static void drawPartBMP16(fat_file_struct *fd, 
+		const uint16_t x, const uint16_t y, const uint16_t drawWidth, 
+		const uint16_t drawHeight, const uint16_t imgX, 
 		const uint16_t imgY, const int16_t imgWidth, const int16_t imgHeight);
 static void lowPowerMode();
 static void normalMode();
@@ -50,11 +53,18 @@ uint8_t buffer[BUFFERSIZE]; // Not really the best way...
 
 bool powerMode = false;
 
+uint16_t imgX, imgY;
+uint8_t drawX, drawY, lastDrawX = 0, lastDrawY = 0;
+uint16_t offsetX, offsetY;
+uint16_t lastOffsetX = 0, lastOffsetY = 0;
+
+bool redraw = false;
+
 int main() {
 	// Turn on interrupt for power on
 	DDRD &= ~(1 << DDD2);
 	PORTD |= (1 << PORTD2);
-	//EICRA |= (1 << ISC00);
+	EICRA |= (1 << ISC01);
 	EIMSK |= (1 << INT0);	// Turns on INT0
 
 	// Init communication
@@ -144,13 +154,6 @@ int main() {
 	int16_t imgWidth, imgHeight;
 	loadBMP(fs, dd, "ABQ.bmp", fd, &imgWidth, &imgHeight);
 
-	uint16_t imgX, imgY;
-	uint8_t drawX, drawY, lastDrawX = 0, lastDrawY = 0;
-	uint16_t offsetX, offsetY;
-	uint16_t lastOffsetX = 0, lastOffsetY = 0;
-
-	bool redraw = false;
-
 	while (1) {
 		response = GPS::loadData(gpsdata);
 
@@ -172,12 +175,12 @@ int main() {
 				LCD::setOrientation(0);
 				LCD::drawString(gpsdata.latStr, 5, 5, BLACK);
 				LCD::drawString(gpsdata.longStr, 5, 15, BLACK);
-				// Just blink the square
-				drawPartBMP16(fd, lastDrawX-8, lastDrawY-8, 16, 16, 
-						offsetX, offsetY, imgWidth, imgHeight);
-				_delay_ms(200);	// Avoid this...timers?
-				LCD::fillRect(drawX-4, drawY-4, drawX+4, drawY+4, LIME);
-				_delay_ms(200);
+				if (abs(lastDrawX - drawX) > 2 || abs(lastDrawY - drawY) > 2) {
+					// Just blink the square
+					drawPartBMP16(fd, lastDrawX-8, lastDrawY-8, 16, 16, 
+							lastOffsetX, lastOffsetY, imgWidth, imgHeight);
+					LCD::fillRect(drawX-4, drawY-4, drawX+4, drawY+4, LIME);
+				}
 			}
 
 			redraw = false;
@@ -188,32 +191,8 @@ int main() {
 		}
 
 		if (response == GPS::GPGGA) {
-			/*UART::writeByte('A');
-			// Send the status
-			UART::writeByte(gpsdata.status);
-
-			// Send latitude
-			memcpy(&temp, &gpsdata.latitude, sizeof(float));
-			UART::writeByte(temp >> 24);
-			UART::writeByte(temp >> 16);
-			UART::writeByte(temp >> 8);
-			UART::writeByte(temp);
-
-			// Send longitude
-			memcpy(&temp, &gpsdata.longitude, sizeof(float));
-			UART::writeByte(temp >> 24);
-			UART::writeByte(temp >> 16);
-			UART::writeByte(temp >> 8);
-			UART::writeByte(temp);
-
-			UART::writeByte('\r');
-			UART::writeByte('\n');*/
-
 			redraw = true;
 		}
-
-		// Logic to determine low power modes
-		// Input reading...
 	}
 	fat_close_file(fd);	// Close the image
 	return 0;
@@ -326,37 +305,41 @@ void lowPowerMode()
 {
 	// Set the LCD to sleep mode
 	LCD::writeCmd(SLPIN);
-
-	// Set the GPS to low power mode
-	GPS::enterStandby();
-
-	// Set the AVR to low power
-
 	TCCR0A = 0;
 	TCCR0B = 0;	// Turn off the PWM
 
-	_delay_ms(500);
+	// Set the GPS to low power mode
+	GPS::enterStandby();
 }
 
 void normalMode()
 {
+	// Turn on LCD and PWM backlight
 	LCD::writeCmd(SLPOUT);
-
-	GPS::wakeup();
-
 	TCCR0A |= (1 << WGM00) | (1 << WGM01) | (1 << COM0A1);
 	TCCR0B |= (1 << CS01);
-	_delay_ms(500);
+
+	GPS::wakeup();
 }
 
 ISR (INT0_vect)
 {
 	if (!powerMode) {
+		cli();
+		powerMode = true;
 		// Turn on the processor
 		lowPowerMode();
-		powerMode = true;
-	} else {
+		_delay_ms(1500);	// button bouncing
+
+		// Set the AVR to low power
+		set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+		sleep_enable();
+		sei();
+		sleep_cpu();
+		sleep_disable();	// Where program continues
 		normalMode();
+
+		_delay_ms(1500);	// button bouncing
 		powerMode = false;
 	}
 }

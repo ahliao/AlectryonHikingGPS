@@ -7480,23 +7480,23 @@ SparkFun BigTime Watch Kit&lt;/a&gt;&lt;/li&gt;&lt;/ul&gt;
 </classes>
 <parts>
 <part name="U1" library="SparkFun-IC-Microcontroller" deviceset="ATMEGA328P_TQFP" device="" value="ATMEGA328P_TQFP"/>
-<part name="U2" library="adafruit" deviceset="GPS_FGPMMOPA6H" device="" value="GPS Unit"/>
-<part name="J2" library="SparkFun-Connectors" deviceset="CONN_06" device="SILK_FEMALE_PTH" value="Prog Connector"/>
-<part name="J1" library="SparkFun-Connectors" deviceset="CONN_10" device="&quot;" value="LCD Connector"/>
-<part name="J3" library="SparkFun-Connectors" deviceset="JST_2MM_MALE" device="" value="Li-Po Connector"/>
+<part name="U2" library="adafruit" deviceset="GPS_FGPMMOPA6H" device=""/>
+<part name="J2" library="SparkFun-Connectors" deviceset="CONN_06" device="SILK_FEMALE_PTH"/>
+<part name="J1" library="SparkFun-Connectors" deviceset="CONN_10" device="&quot;"/>
+<part name="J3" library="SparkFun-Connectors" deviceset="JST_2MM_MALE" device=""/>
 <part name="Y1" library="SparkFun-Clocks" deviceset="CRYSTAL-16MHZ" device="SMD-5X3.2" value="16MHz"/>
 <part name="C1" library="SparkFun-Capacitors" deviceset="22PF" device="-0603-50V-5%" value="22pF"/>
 <part name="C2" library="SparkFun-Capacitors" deviceset="22PF" device="-0603-50V-5%" value="22pF"/>
 <part name="U3" library="SparkFun-IC-Power" deviceset="V_REG_MIC5205" device="3.3V" value="3.3V/150mA"/>
 <part name="C5" library="SparkFun-Capacitors" deviceset="10UF" device="-0603-6.3V-20%" value="10uF"/>
 <part name="C7" library="SparkFun-Capacitors" deviceset="0.1UF" device="-0603-25V-(+80/-20%)" value="0.1uF"/>
-<part name="S1" library="SparkFun-Retired" deviceset="SWITCH-SPDT" device="SMD" value="PWR Switch"/>
+<part name="S1" library="SparkFun-Retired" deviceset="SWITCH-SPDT" device="SMD"/>
 <part name="U$1" library="AlectryonLib" deviceset="TACTILE_SWITCH_RIGHT" device=""/>
 <part name="U$2" library="AlectryonLib" deviceset="TACTILE_SWITCH_RIGHT" device=""/>
-<part name="U$3" library="AlectryonLib" deviceset="TACTILE_SWITCH_RIGHT" device="" value=""/>
-<part name="LED1" library="eagle-ltspice" library_urn="urn:adsk.eagle:library:217" deviceset="LED_E" device="SML0603" value="Red"/>
-<part name="LED2" library="eagle-ltspice" library_urn="urn:adsk.eagle:library:217" deviceset="LED_E" device="SML0603" value="Green"/>
-<part name="LED3" library="eagle-ltspice" library_urn="urn:adsk.eagle:library:217" deviceset="LED_E" device="SML0603" value="Blue"/>
+<part name="U$3" library="AlectryonLib" deviceset="TACTILE_SWITCH_RIGHT" device=""/>
+<part name="LED1" library="eagle-ltspice" library_urn="urn:adsk.eagle:library:217" deviceset="LED_E" device="SML0603"/>
+<part name="LED2" library="eagle-ltspice" library_urn="urn:adsk.eagle:library:217" deviceset="LED_E" device="SML0603"/>
+<part name="LED3" library="eagle-ltspice" library_urn="urn:adsk.eagle:library:217" deviceset="LED_E" device="SML0603"/>
 <part name="R1" library="resistor" library_urn="urn:adsk.eagle:library:348" deviceset="R-US_" device="R0603" value="470"/>
 <part name="R2" library="resistor" library_urn="urn:adsk.eagle:library:348" deviceset="R-US_" device="R0603" value="470"/>
 <part name="C9" library="SparkFun-Capacitors" deviceset="0.1UF" device="-0603-25V-(+80/-20%)" value="0.1uF"/>
@@ -7508,12 +7508,12 @@ SparkFun BigTime Watch Kit&lt;/a&gt;&lt;/li&gt;&lt;/ul&gt;
 <part name="GND4" library="SparkFun-PowerSymbols" deviceset="GND" device=""/>
 <part name="SUPPLY2" library="SparkFun-PowerSymbols" deviceset="VCC" device=""/>
 <part name="GND5" library="SparkFun-PowerSymbols" deviceset="GND" device=""/>
-<part name="S2" library="SparkFun-Switches" deviceset="MOMENTARY-SWITCH-SPST" device="-SMD-6.0X3.5MM" value="RST Switch"/>
+<part name="S2" library="SparkFun-Switches" deviceset="MOMENTARY-SWITCH-SPST" device="-SMD-6.0X3.5MM"/>
 <part name="GND6" library="SparkFun-PowerSymbols" deviceset="GND" device=""/>
 <part name="GND7" library="SparkFun-PowerSymbols" deviceset="GND" device=""/>
 <part name="GND8" library="SparkFun-PowerSymbols" deviceset="GND" device=""/>
 <part name="SUPPLY4" library="SparkFun-PowerSymbols" deviceset="VCC" device=""/>
-<part name="R3" library="resistor" library_urn="urn:adsk.eagle:library:348" deviceset="R-US_" device="R0603" value="470"/>
+<part name="R3" library="resistor" library_urn="urn:adsk.eagle:library:348" deviceset="R-US_" device="R0603"/>
 <part name="GND9" library="SparkFun-PowerSymbols" deviceset="GND" device=""/>
 <part name="GND10" library="SparkFun-PowerSymbols" deviceset="GND" device=""/>
 <part name="GND11" library="SparkFun-PowerSymbols" deviceset="GND" device=""/>
@@ -7644,14 +7644,13 @@ SparkFun BigTime Watch Kit&lt;/a&gt;&lt;/li&gt;&lt;/ul&gt;
 <wire x1="129.54" y1="132.08" x2="129.54" y2="142.24" width="0.1524" layer="91"/>
 <wire x1="129.54" y1="142.24" x2="147.32" y2="142.24" width="0.1524" layer="91"/>
 <label x="139.7" y="142.24" size="1.778" layer="95"/>
+<pinref part="U$2" gate="G$1" pin="1"/>
+<wire x1="129.54" y1="132.08" x2="147.32" y2="132.08" width="0.1524" layer="91"/>
 <label x="139.7" y="132.08" size="1.778" layer="95"/>
 <pinref part="U$3" gate="G$1" pin="1"/>
 <wire x1="129.54" y1="121.92" x2="147.32" y2="121.92" width="0.1524" layer="91"/>
 <label x="139.7" y="121.92" size="1.778" layer="95"/>
 <junction x="129.54" y="121.92"/>
-<pinref part="U$2" gate="G$1" pin="1"/>
-<wire x1="147.32" y1="132.08" x2="129.54" y2="132.08" width="0.1524" layer="91"/>
-<junction x="129.54" y="132.08"/>
 </segment>
 <segment>
 <pinref part="U2" gate="G$1" pin="GND@2"/>
@@ -7693,20 +7692,19 @@ SparkFun BigTime Watch Kit&lt;/a&gt;&lt;/li&gt;&lt;/ul&gt;
 </net>
 <net name="VBATT" class="0">
 <segment>
+<pinref part="J3" gate="G$1" pin="+"/>
+<wire x1="-40.64" y1="124.46" x2="-40.64" y2="114.3" width="0.1524" layer="91"/>
+<label x="-38.1" y="114.3" size="1.778" layer="95" rot="R90"/>
+</segment>
+<segment>
+<pinref part="S1" gate="1" pin="P"/>
+<wire x1="-33.02" y1="134.62" x2="-27.94" y2="134.62" width="0.1524" layer="91"/>
+<label x="-33.02" y="134.62" size="1.778" layer="95"/>
+</segment>
+<segment>
 <pinref part="J1" gate="G$1" pin="2"/>
 <wire x1="83.82" y1="111.76" x2="68.58" y2="111.76" width="0.1524" layer="91"/>
 <label x="73.66" y="111.76" size="1.778" layer="95"/>
-</segment>
-<segment>
-<pinref part="U3" gate="U1" pin="EN"/>
-<pinref part="S1" gate="1" pin="S"/>
-<pinref part="U3" gate="U1" pin="IN"/>
-<wire x1="-17.78" y1="127" x2="-15.24" y2="127" width="0.1524" layer="91"/>
-<wire x1="-20.32" y1="132.08" x2="-17.78" y2="132.08" width="0.1524" layer="91"/>
-<wire x1="-17.78" y1="132.08" x2="-15.24" y2="132.08" width="0.1524" layer="91"/>
-<wire x1="-17.78" y1="127" x2="-17.78" y2="132.08" width="0.1524" layer="91"/>
-<junction x="-17.78" y="132.08"/>
-<label x="-20.32" y="132.08" size="1.778" layer="95"/>
 </segment>
 </net>
 <net name="N$6" class="0">
@@ -7785,6 +7783,18 @@ SparkFun BigTime Watch Kit&lt;/a&gt;&lt;/li&gt;&lt;/ul&gt;
 <wire x1="27.94" y1="50.8" x2="20.32" y2="50.8" width="0.1524" layer="91"/>
 <wire x1="27.94" y1="50.8" x2="27.94" y2="45.72" width="0.1524" layer="91"/>
 <junction x="27.94" y="50.8"/>
+</segment>
+</net>
+<net name="N$4" class="0">
+<segment>
+<pinref part="U3" gate="U1" pin="EN"/>
+<pinref part="S1" gate="1" pin="S"/>
+<pinref part="U3" gate="U1" pin="IN"/>
+<wire x1="-17.78" y1="127" x2="-15.24" y2="127" width="0.1524" layer="91"/>
+<wire x1="-20.32" y1="132.08" x2="-17.78" y2="132.08" width="0.1524" layer="91"/>
+<wire x1="-17.78" y1="132.08" x2="-15.24" y2="132.08" width="0.1524" layer="91"/>
+<wire x1="-17.78" y1="127" x2="-17.78" y2="132.08" width="0.1524" layer="91"/>
+<junction x="-17.78" y="132.08"/>
 </segment>
 </net>
 <net name="LCDD/C" class="0">
@@ -8029,18 +8039,6 @@ SparkFun BigTime Watch Kit&lt;/a&gt;&lt;/li&gt;&lt;/ul&gt;
 <pinref part="LED2" gate="G$1" pin="C"/>
 <pinref part="R2" gate="G$1" pin="2"/>
 <wire x1="109.22" y1="88.9" x2="114.3" y2="88.9" width="0.1524" layer="91"/>
-</segment>
-</net>
-<net name="LIPO" class="0">
-<segment>
-<pinref part="J3" gate="G$1" pin="+"/>
-<wire x1="-40.64" y1="124.46" x2="-40.64" y2="114.3" width="0.1524" layer="91"/>
-<label x="-38.1" y="114.3" size="1.778" layer="95" rot="R90"/>
-</segment>
-<segment>
-<pinref part="S1" gate="1" pin="P"/>
-<wire x1="-33.02" y1="134.62" x2="-27.94" y2="134.62" width="0.1524" layer="91"/>
-<label x="-33.02" y="134.62" size="1.778" layer="95"/>
 </segment>
 </net>
 </nets>
