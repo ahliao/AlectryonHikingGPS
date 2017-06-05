@@ -27,7 +27,20 @@
 #include "drivers/sd_raw_config.h"
 
 // Define pin outputs
-#define heartBeatPin 6
+#define LCD_CS 2
+#define selectLCD() PORTB &= ~(1 << LCD_CS)
+#define unselectLCD() PORTB |= (1 << LCD_CS)
+// Status LEDs on PORTC0 and PORTC1
+#define STATUS1 0
+#define STATUS2 1
+#define MENUBTN 2
+#define UPBTN 3
+#define DOWNBTN 4
+
+// Operation Modes
+#define MODE_MAP 0
+#define MODE_MENU 1
+#define MODE_SCROLL 2
 
 // function prototypes
 static uint8_t find_file_in_dir(fat_fs_struct* fs, fat_dir_struct* dd, 
@@ -42,6 +55,7 @@ static void drawPartBMP16(fat_file_struct *fd,
 		const uint16_t x, const uint16_t y, const uint16_t drawWidth, 
 		const uint16_t drawHeight, const uint16_t imgX, 
 		const uint16_t imgY, const int16_t imgWidth, const int16_t imgHeight);
+static void handleInputs();
 static void lowPowerMode();
 static void normalMode();
 
@@ -51,34 +65,57 @@ const uint8_t LCDHEIGHT = 160;
 const uint16_t BUFFERSIZE = 128 * 2;
 uint8_t buffer[BUFFERSIZE]; // Not really the best way...
 
-bool powerMode = false;
-
+// Global Variables
+GPS::GPSData gpsdata;
 uint16_t imgX, imgY;
 uint8_t drawX, drawY, lastDrawX = 0, lastDrawY = 0;
 uint16_t offsetX, offsetY;
 uint16_t lastOffsetX = 0, lastOffsetY = 0;
 
+// Timer2 overflow counter
+uint8_t overflowCounter2 = 0;
+
+// Current mode of the tool
+uint8_t currentMode = MODE_MAP;
+
+uint8_t menuSelection = 0;
+const uint8_t menuSize = 5;
+const char* menuItems[menuSize] = {"Map View", "Load Trail", "Settings", "About", "Sleep"};
+
+// Temp testing stuff
+float latitude = 0, longitude = 0, step = 0;
 bool redraw = false;
 
 int main() {
 	// Turn on interrupt for power on
-	DDRD &= ~(1 << DDD2);
+	/*DDRD &= ~(1 << DDD2);
 	PORTD |= (1 << PORTD2);
 	EICRA |= (1 << ISC01);
-	EIMSK |= (1 << INT0);	// Turns on INT0
+	EIMSK |= (1 << INT0);	// Turns on INT0*/
 
 	// Init communication
 	UART::initUART(9600, true);
 
-	DDRC = 0xFF;
-	PORTC = 0x02;
+	// Setup LED Ports as output
+	DDRC |= (1 << DDC0) | (1 << DDC1);
 
-	GPS::GPSData gpsdata;
+	// Startup LED Sequence
+	PORTC |= (1 << STATUS1);
+	_delay_ms(250);
+	PORTC ^= (1 << STATUS1) | (1 << STATUS2);
+	_delay_ms(250);
+	PORTC ^= (1 << STATUS1) | (1 << STATUS2);
+	_delay_ms(250);
+	PORTC = 0x00;
+
+	// Init basic variables
 	uint8_t response = 0;
 	uint32_t temp = 0;
 
 	// Init LCD screen
 	LCD::initSPI();
+	DDRB |= (1 << DDB2);	// LCD CS, SD card handles the PORTD7
+	selectLCD();
 	LCD::initDisplay();
 	LCD::setOrientation(0);
 	LCD::clearDisp();
@@ -86,10 +123,19 @@ int main() {
 	// Setup PWM for LCD brightness
 	TCCR0A |= (1 << WGM00) | (1 << WGM01) | (1 << COM0A1);
 	TCCR0B |= (1 << CS01);
-	DDRD |= (1 << PD6); // This is on PD6
+	DDRD |= (1 << DDD6); // This is on PD6
 	OCR0A = 128;
 
-	PORTC = 0x01;
+	// Timer 2 for general timing without using delays
+	//TCCR2A |= (1 << WGM20) | (1 << WGM21);
+	TCCR2B |= (1 << CS22) | (1 << CS21) | (1 << CS20);
+	TIMSK2 |= (1 << TOIE2);
+
+	// Setup input up and down buttons
+	DDRD &= ~((1 << MENUBTN) | (1 << UPBTN) | (1 << DOWNBTN));
+	PORTD |= (1 << MENUBTN) | (1 << UPBTN) | (1 << DOWNBTN);
+
+	unselectLCD();	// SD Drivers handles the chip select for the SD Card
 
 	// Init SD communication
 	if (!sd_raw_init()) {
@@ -128,9 +174,9 @@ int main() {
 	fat_file_struct *fd = open_file_in_dir(fs, dd, "ABQ.trail");
 	if (!fd) {
 		// Error opening file
-		PORTC = 0x02;
+		selectLCD();
 		LCD::drawString("Error", 50, 70, BLACK);
-		PORTC = 0x01;
+		unselectLCD();
 	}
 	uint8_t buffer[16];
 	fat_read_file(fd, buffer, sizeof(buffer));
@@ -152,50 +198,217 @@ int main() {
 
 	// Load the BMP image
 	int16_t imgWidth, imgHeight;
+	selectLCD();
 	loadBMP(fs, dd, "ABQ.bmp", fd, &imgWidth, &imgHeight);
 
 	while (1) {
 		response = GPS::loadData(gpsdata);
 
-		if (redraw) {
-			// Draw the GPS location
-			imgX = (uint16_t)((float)abs((gpsdata.latitude - x0) / scaleX));
-			imgY = (uint16_t)((float)abs((gpsdata.longitude - y0) / scaleY));
-			drawX = (imgX % 64) + 32;
-			drawY = (imgY % 80) + 40;
+		switch (currentMode) {
+			case MODE_MAP:
+				if (redraw) {
+					// Draw the GPS location
+					imgX = (uint16_t)((float)abs((gpsdata.latitude - x0) / scaleX));
+					imgY = (uint16_t)((float)abs((gpsdata.longitude - y0) / scaleY));
+					drawX = (imgX % 64) + 32;
+					drawY = (imgY % 80) + 40;
 
-			// Logic on where to draw here
-			offsetX = (imgX / 64) * 64 - 32;
-			offsetY = (imgY / 80) * 80 - 40;	// Because BMP are bott to top
-			if (lastOffsetX != offsetX || lastOffsetY != offsetY) {
-				drawBMP16(fd, offsetX, offsetY, imgWidth, imgHeight);
-				LCD::fillRect(drawX-4, drawY-4, drawX+4, drawY+4, LIME);
-			} else {
-				// Draw the lat and long text
-				LCD::setOrientation(0);
-				LCD::drawString(gpsdata.latStr, 5, 5, BLACK);
-				LCD::drawString(gpsdata.longStr, 5, 15, BLACK);
-				if (abs(lastDrawX - drawX) > 2 || abs(lastDrawY - drawY) > 2) {
-					// Just blink the square
-					drawPartBMP16(fd, lastDrawX-8, lastDrawY-8, 16, 16, 
-							lastOffsetX, lastOffsetY, imgWidth, imgHeight);
-					LCD::fillRect(drawX-4, drawY-4, drawX+4, drawY+4, LIME);
+					// Logic on where to draw here
+					offsetX = (imgX / 64) * 64 - 32;
+					offsetY = (imgY / 80) * 80 - 40;	// Because BMP are bott to top
+					if (lastOffsetX != offsetX || lastOffsetY != offsetY) {
+						drawBMP16(fd, offsetX, offsetY, imgWidth, imgHeight);
+						LCD::fillRect(drawX-4, drawY-4, drawX+4, drawY+4, LIME);
+					} else {
+						// Draw the lat and long text
+						LCD::setOrientation(0);
+						LCD::drawString(gpsdata.latStr, 5, 5, BLACK);
+						LCD::drawString(gpsdata.longStr, 5, 15, BLACK);
+						if (abs(lastDrawX - drawX) >= 1 || abs(lastDrawY - drawY) >= 1) {
+							// Just blink the square
+							drawPartBMP16(fd, lastDrawX-8, lastDrawY-8, 16, 16, 
+									lastOffsetX, lastOffsetY, imgWidth, imgHeight);
+							LCD::fillRect(drawX-4, drawY-4, drawX+4, drawY+4, LIME);
+						}
+					}
+
+					redraw = false;
+					lastOffsetX = offsetX;
+					lastOffsetY = offsetY;
+					lastDrawX = drawX;
+					lastDrawY = drawY;
 				}
-			}
 
-			redraw = false;
-			lastOffsetX = offsetX;
-			lastOffsetY = offsetY;
-			lastDrawX = drawX;
-			lastDrawY = drawY;
+				if (response == GPS::GPGGA) {
+					redraw = true;
+					if (latitude == 0) {
+						latitude = gpsdata.latitude;
+						longitude = gpsdata.longitude;
+					}
+				}
+
+				break;
+			case MODE_MENU:
+				if (redraw) {
+					LCD::fillRect(0, 0, 16, 160, WHITE);
+					// Draw the menu cursor
+					LCD::fillRect(11, 26 + menuSelection * 10, 16, 31 + menuSelection * 10, RED);
+					redraw = false;
+					//_delay_ms(200);
+				}
+				break;
+			case MODE_SCROLL:
+				if (redraw) {
+					// Draw the GPS location
+					imgX = (uint16_t)((float)abs((latitude - x0) / scaleX));
+					imgY = (uint16_t)((float)abs((longitude - y0) / scaleY));
+					drawX = (imgX % 64) + 32;
+					drawY = (imgY % 80) + 40;
+
+					// Logic on where to draw here
+					offsetX = (imgX / 64) * 64 - 32;
+					offsetY = (imgY / 80) * 80 - 40;	// Because BMP are bott to top
+					if (lastOffsetX != offsetX || lastOffsetY != offsetY) {
+						drawBMP16(fd, offsetX, offsetY, imgWidth, imgHeight);
+						LCD::fillRect(drawX-4, drawY-4, drawX+4, drawY+4, LIME);
+					} else {
+						// Draw the lat and long text
+						/*LCD::setOrientation(0);
+						LCD::drawString(gpsdata.latStr, 5, 5, BLACK);
+						LCD::drawString(gpsdata.longStr, 5, 15, BLACK);*/
+						if (abs(lastDrawX - drawX) >= 1 || abs(lastDrawY - drawY) >= 1) {
+							// Just blink the square
+							drawPartBMP16(fd, lastDrawX-8, lastDrawY-8, 16, 16, 
+									lastOffsetX, lastOffsetY, imgWidth, imgHeight);
+							LCD::fillRect(drawX-4, drawY-4, drawX+4, drawY+4, LIME);
+						}
+					}
+
+					redraw = false;
+					lastOffsetX = offsetX;
+					lastOffsetY = offsetY;
+					lastDrawX = drawX;
+					lastDrawY = drawY;
+				}
+				break;
+			default:
+				break;
 		}
-
-		if (response == GPS::GPGGA) {
-			redraw = true;
+		// Handle any button inputs 
+		if (overflowCounter2 > 10) {
+			handleInputs();
 		}
 	}
 	fat_close_file(fd);	// Close the image
 	return 0;
+}
+
+void handleInputs() {
+	// Handle button inputs
+	if (!(PIND & (1 << MENUBTN))) {
+		switch (currentMode) {
+			case MODE_MAP:
+				// Display a menu
+				LCD::setOrientation(0);
+				LCD::clearDisp();
+				LCD::drawString("Menu", 25, 10, BLACK);
+				for (uint8_t i = 0; i < menuSize; ++i) {
+					LCD::drawString(menuItems[i], 25, 25 + i * 10, BLACK);
+				}
+				menuSelection = 0;
+				currentMode = MODE_MENU;
+				redraw = true;
+				break;
+			case MODE_MENU:
+				// If going into SCROLL MODE
+				//latitude = gpsdata.latitude;
+				//longitude = gpsdata.longitude;
+				currentMode = MODE_MAP;
+				lastOffsetX = 0;
+				lastOffsetY = 0;
+				redraw = true;
+				break;
+			case MODE_SCROLL:
+				step = -0.0010;
+				break;
+			default:
+				break;
+		}
+		overflowCounter2 = 0;
+	} else {
+		switch (currentMode) {
+			case MODE_MAP:
+				break;
+			case MODE_MENU:
+				break;
+			case MODE_SCROLL:
+				break;
+			default:
+				break;
+		}
+	}
+	if (!(PIND & (1 << UPBTN))) {
+		switch (currentMode) {
+			case MODE_MAP:
+				break;
+			case MODE_MENU:
+				if (menuSelection > 0) --menuSelection;
+				redraw = true;
+				break;
+			case MODE_SCROLL:
+				PORTC |= (1 << STATUS1);
+				latitude += step;
+				redraw = true;
+				_delay_ms(200);
+				break;
+			default:
+				break;
+		}
+		overflowCounter2 = 0;
+	} else {
+		switch (currentMode) {
+			case MODE_MAP:
+				break;
+			case MODE_MENU:
+				break;
+			case MODE_SCROLL:
+				break;
+			default:
+				break;
+		}
+		PORTC &= ~(1 << STATUS1);
+	}
+	if (!(PIND & (1 << DOWNBTN))) {
+		switch (currentMode) {
+			case MODE_MAP:
+				break;
+			case MODE_MENU:
+				if (menuSelection < menuSize - 1) ++menuSelection;
+				redraw = true;
+				break;
+			case MODE_SCROLL:
+				PORTC |= (1 << STATUS2);
+				longitude += step;
+				redraw = true;
+				_delay_ms(200);
+				break;
+			default:
+				break;
+		}
+		overflowCounter2 = 0;
+	} else {
+		switch (currentMode) {
+			case MODE_MAP:
+				break;
+			case MODE_MENU:
+				break;
+			case MODE_SCROLL:
+				break;
+			default:
+				break;
+		}
+		PORTC &= ~(1 << STATUS2);
+	}
 }
 
 // This requires width to be a multiple of LCDWIDTH atm..
@@ -210,16 +423,16 @@ void drawBMP16(fat_file_struct *fd, const uint16_t x, const uint16_t y,
 
 	fat_seek_file(fd, &offset, FAT_SEEK_SET);
 
-	PORTC = 0x02;
+	selectLCD();
 	LCD::setOrientation(4);
 	LCD::setAddrWindow(0, 0, LCDWIDTH, LCDHEIGHT);
 	LCD::writeCmd(RAMWR);
 	for (row = 0; row < LCDHEIGHT; ++row) {
-		PORTC = 0x01;
+		unselectLCD();
 		offset = (width-LCDWIDTH)*2;	// Offset to the next row
 		fat_read_file(fd, buffer, sizeof(buffer));
 		fat_seek_file(fd, &offset, FAT_SEEK_CUR);
-		PORTC = 0x02;
+		selectLCD();
 		for (col = 0; col < LCDWIDTH; ++col) {
 			temp = col << 1;	// Divide by 2
 			color = buffer[temp];
@@ -242,16 +455,16 @@ void drawPartBMP16(fat_file_struct *fd, const uint16_t x, const uint16_t y,
 
 	fat_seek_file(fd, &offset, FAT_SEEK_SET);
 
-	PORTC = 0x02;
+	selectLCD();
 	LCD::setOrientation(4);
 	LCD::setAddrWindow(x, y, x+drawWidth, y+drawHeight);
 	LCD::writeCmd(RAMWR);
 	for (row = 0; row <= drawHeight; ++row) {
-		PORTC = 0x01;
+		unselectLCD();
 		offset = (imgWidth-LCDWIDTH)*2;	// Offset to the next row
 		fat_read_file(fd, buffer, sizeof(buffer));
 		fat_seek_file(fd, &offset, FAT_SEEK_CUR);
-		PORTC = 0x02;
+		selectLCD();
 		for (col = 0; col <= drawWidth; ++col) {
 			temp = col << 1;	// Divide by 2
 			color = buffer[temp];
@@ -303,6 +516,7 @@ fat_file_struct* open_file_in_dir(fat_fs_struct* fs,
 
 void lowPowerMode()
 {
+	selectLCD();
 	// Set the LCD to sleep mode
 	LCD::writeCmd(SLPIN);
 	TCCR0A = 0;
@@ -314,6 +528,7 @@ void lowPowerMode()
 
 void normalMode()
 {
+	selectLCD();
 	// Turn on LCD and PWM backlight
 	LCD::writeCmd(SLPOUT);
 	TCCR0A |= (1 << WGM00) | (1 << WGM01) | (1 << COM0A1);
@@ -324,22 +539,25 @@ void normalMode()
 
 ISR (INT0_vect)
 {
-	if (!powerMode) {
-		cli();
-		powerMode = true;
-		// Turn on the processor
-		lowPowerMode();
-		_delay_ms(1500);	// button bouncing
+	/*
+	cli();
+	// Turn on the processor
+	lowPowerMode();
+	_delay_ms(1500);	// button bouncing
 
-		// Set the AVR to low power
-		set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-		sleep_enable();
-		sei();
-		sleep_cpu();
-		sleep_disable();	// Where program continues
-		normalMode();
+	// Set the AVR to low power
+	set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+	sleep_enable();
+	sei();
+	sleep_cpu();
+	sleep_disable();	// Where program continues
+	normalMode();
 
-		_delay_ms(1500);	// button bouncing
-		powerMode = false;
-	}
+	_delay_ms(1500);	// button bouncing
+	*/
+}
+
+ISR (TIMER2_OVF_vect)
+{
+	++overflowCounter2;
 }

@@ -82,11 +82,11 @@ extern "C"
     defined(__AVR_ATmega328P__)
     #define configure_pin_mosi() DDRB |= (1 << DDB3)
     #define configure_pin_sck() DDRB |= (1 << DDB5)
-    #define configure_pin_ss() DDRB |= (1 << DDB2)
+    #define configure_pin_ss() DDRD |= (1 << DDD7)
     #define configure_pin_miso() DDRB &= ~(1 << DDB4)
 
-    #define select_card() PORTB &= ~(1 << PORTB2)
-    #define unselect_card() PORTB |= (1 << PORTB2)
+    #define select_card() PORTD &= ~(1 << PORTD7)
+    #define unselect_card() PORTD |= (1 << PORTD7)
 #elif defined(__AVR_ATmega16__) || \
       defined(__AVR_ATmega32__)
     #define configure_pin_mosi() DDRB |= (1 << DDB5)

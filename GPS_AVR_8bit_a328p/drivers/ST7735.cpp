@@ -10,7 +10,8 @@ namespace LCD
 	{
 		// Set MOSI and SCK output
 		DDRB = 0x2F;
-		// Enable SPI, Master, set clock rate fck/16
+		// Enable SPI, Master, set clock rate fck/4
+		// This stuff gets rewritten in the SD Card init
 		SPCR = (1 << SPE) | (1 << MSTR);
 	}
 
