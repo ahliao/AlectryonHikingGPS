@@ -1,5 +1,6 @@
 HEXFILE = main.hex
 OUTFILE = $(HEXFILE:.hex=.out)
+EEPROMFILE = test.hex 
 CXX = avr-g++
 CFLAGS = -mmcu=atmega328p -Os -Wall -std=c++0x
 PROGRAMMER = avrisp2
@@ -17,6 +18,7 @@ OBJECTS = $(addprefix $(OBJ_DIR)/, $(notdir $(SOURCES:.cpp=.o)))
 all: DEPS $(OBJECTS)
 	$(CXX) $(CFLAGS) $(OBJECTS) -o $(OUTFILE)
 	avr-objcopy -R .eeprom -O ihex $(OUTFILE) $(HEXFILE)
+	avr-objcopy -j .eeprom --change-section-lma .eeprom=0 -O ihex $(OUTFILE) $(EEPROMFILE)
 	avr-size $(OUTFILE)
 	rm $(OUTFILE)
 
@@ -43,6 +45,10 @@ clean:
 # uploads onto chip
 upload:
 	sudo avrdude -c $(PROGRAMMER) -p $(CHIP) -U flash:w:$(HEXFILE)
+
+# upload eeprom
+eeprom:
+	sudo avrdude -c $(PROGRAMMER) -p $(CHIP) -U eeprom:w:$(EEPROMFILE)
 
 # checks low fuse bits
 checklowfuse:

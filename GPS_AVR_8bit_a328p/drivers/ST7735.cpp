@@ -1,5 +1,6 @@
 #include "ST7735.hpp"
 #include <string.h>
+#include <stdio.h>
 
 #define clearBit(x,y) x &= ~_BV(y)
 #define setBit(x,y) x |= _BV(y)
@@ -120,7 +121,7 @@ namespace LCD
 		}
 	}
 
-	void putCh(char ch, uint8_t x, uint8_t y, uint16_t color)
+	void putCh(char ch, uint8_t x, uint8_t y, uint16_t color, uint16_t bgcolor)
 	{
 		// Write a character is 6x7
 		int pixel;
@@ -134,7 +135,7 @@ namespace LCD
 			{
 				data = pgm_read_byte(&(FONT_CHARS[ch-32][col]));
 				bit = data & mask;
-				if (bit == 0) pixel=WHITE;
+				if (bit == 0) pixel=bgcolor;
 				else pixel = color;
 				sendSPI(pixel >> 8);
 				sendSPI(pixel);
@@ -146,9 +147,11 @@ namespace LCD
 	void drawString(const char *str, uint8_t x, uint8_t y, uint16_t color)
 	{
 		uint8_t xt = x;
-		for (uint8_t i = 0; i < strlen(str); ++i) {
-			putCh(str[i], xt, y, color);
+		uint8_t temp = 0;
+		while(str[temp] != '\0') {
+			putCh(str[temp], xt, y, color);
 			xt += 6;
+			++temp;
 		}
 	}
 
@@ -158,6 +161,51 @@ namespace LCD
 		for (uint8_t i = 0; i < bufferSize-1; ++i) {
 			putCh((char)str[i], xt, y, color);
 			xt += 6;
+		}
+	}
+
+	void drawInt(uint8_t num, uint8_t x, uint8_t y, uint16_t color)
+	{
+		uint8_t xt = x + 18;
+		char ch;
+		while((ch = num % 10) != 0) {
+			putCh(ch + 48, xt, y, color);
+			xt -= 6;
+			num /= 10;
+		}
+	}
+
+	void drawIntEdit(uint8_t num, uint8_t highlight, uint8_t x, uint8_t y, uint16_t color, uint16_t bgcolor)
+	{
+		int8_t index;
+		uint8_t xt = x + 18;
+		for (index = 2; index >= 0; --index) {
+			if (index == highlight) 
+				putCh((num%10) + 48, xt, y, color, bgcolor);
+			else
+				putCh((num%10) + 48, xt, y, color);
+			xt -= 6;
+			num /= 10;
+		}
+	}
+
+	void drawFloat(const double f, uint8_t x, uint8_t y, uint16_t color)
+	{
+		uint8_t i;
+		uint16_t temp = 10000;
+		uint8_t xt = x;
+		for (i = 0; i < 5; ++i) {
+			putCh(((int)(f / temp) % 10) + 48, xt, y, color);
+			xt += 6;
+			temp /= 10;
+		}
+		putCh('.', xt, y, color);
+		xt += 6;
+		temp = 10;
+		for (i = 0; i < 5; ++i) {
+			putCh(((uint32_t)(f * temp) % 10) + 48, xt, y, color);
+			xt += 6;
+			temp *= 10;
 		}
 	}
 

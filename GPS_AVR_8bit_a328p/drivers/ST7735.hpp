@@ -169,9 +169,12 @@ namespace LCD
 	void drawHLine(uint8_t x0, uint8_t x1, uint8_t y, uint16_t color);
 	void drawVLine(uint8_t x, uint8_t y0, uint8_t y1, uint16_t color);
 	void drawLine(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint16_t color);
-	void putCh(char ch, uint8_t x, uint8_t y, uint16_t color);
+	void putCh(char ch, uint8_t x, uint8_t y, uint16_t color, uint16_t bgcolor=WHITE);
 	void drawString(const char *str, uint8_t x, uint8_t y, uint16_t color);
 	void drawString(const uint8_t *str, uint8_t bufferSize, uint8_t x, uint8_t y, uint16_t color);
+	void drawInt(uint8_t num, uint8_t x, uint8_t y, uint16_t color);
+	void drawIntEdit(uint8_t num, uint8_t highlight, uint8_t x, uint8_t y, uint16_t color, uint16_t bgcolor);
+	void drawFloat(const double f, uint8_t x, uint8_t y, uint16_t color);
 
 	void clearDisp();
 	void setOrientation(uint8_t degrees);

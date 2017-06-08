@@ -12,6 +12,7 @@
 #include <avr/io.h>
 #include <avr/sleep.h>
 #include <avr/power.h>
+#include <avr/eeprom.h>
 #include <util/delay.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,11 +38,6 @@
 #define UPBTN 3
 #define DOWNBTN 4
 
-// Operation Modes
-#define MODE_MAP 0
-#define MODE_MENU 1
-#define MODE_SCROLL 2
-
 // function prototypes
 static uint8_t find_file_in_dir(fat_fs_struct* fs, fat_dir_struct* dd, 
 		const char* name, fat_dir_entry_struct* dir_entry);
@@ -55,6 +51,7 @@ static void drawPartBMP16(fat_file_struct *fd,
 		const uint16_t x, const uint16_t y, const uint16_t drawWidth, 
 		const uint16_t drawHeight, const uint16_t imgX, 
 		const uint16_t imgY, const int16_t imgWidth, const int16_t imgHeight);
+static void drawMenu();
 static void handleInputs();
 static void lowPowerMode();
 static void normalMode();
@@ -67,6 +64,7 @@ uint8_t buffer[BUFFERSIZE]; // Not really the best way...
 
 // Global Variables
 GPS::GPSData gpsdata;
+int16_t imgWidth, imgHeight;
 uint16_t imgX, imgY;
 uint8_t drawX, drawY, lastDrawX = 0, lastDrawY = 0;
 uint16_t offsetX, offsetY;
@@ -75,23 +73,74 @@ uint16_t lastOffsetX = 0, lastOffsetY = 0;
 // Timer2 overflow counter
 uint8_t overflowCounter2 = 0;
 
-// Current mode of the tool
-uint8_t currentMode = MODE_MAP;
+// Menu Variables
+int8_t menuSelection = 0;
+const uint8_t menuSize = 6;
+const char* menuItems[menuSize] = {"Map View", "Scroll View", "Load Trail", "SD Card", "Settings", "Sleep"};
+uint8_t inputCounter = 0;
+// Operation Modes
+#define MODE_MENU -1
+#define MODE_MAPVIEW 0
+#define MODE_SCROLLVIEW 1
+#define MODE_LOADTRAIL 2
+#define MODE_SDCARD 3
+#define MODE_SETTINGS 4
+#define MODE_SLEEP 5
 
-uint8_t menuSelection = 0;
-const uint8_t menuSize = 5;
-const char* menuItems[menuSize] = {"Map View", "Load Trail", "Settings", "About", "Sleep"};
+// Setting Variables
+int8_t settingsSelection = 0;
+const uint8_t settingsSize = 5;
+const char* settingsItems[settingsSize] = {"LCD Brightness", "Home Latitude", "Home Longitude", "Save", "Exit"};
+// Selection options
+#define SETTINGS_BRIGHTNESS 0
+#define SETTINGS_HOMELAT 1
+#define SETTINGS_HOMELONG 2
+#define SETTINGS_SAVE 3
+#define SETTINGS_EXIT 4
+// Selection mode
+#define SETTINGS_MODE_MENU 0
+#define SETTINGS_MODE_BRIGHTNESS 1
+#define SETTINGS_MODE_HOMELAT 2
+#define SETTINGS_MODE_HOMELONG 3
+// Setting edit variables
+uint8_t currentSettingSelection = 0;
+uint8_t currentEditPlace = 0;
+#define BRIGHTNESS_DIGITS 3
+#define HOMELAT_DIGITS 10	// This is including the decimal point
+#define HOMELONG_DIGITS 10	// This is including the decimal point
+
+// Input counter for hold operations
+#define INPUT_TIMER_LIMIT 10
+
+// Current mode of the tool
+int8_t currentMode = MODE_MAPVIEW;
 
 // Temp testing stuff
 float latitude = 0, longitude = 0, step = 0;
 bool redraw = false;
 
+// SD Card variables
+partition_struct *partition;
+fat_fs_struct *fs;
+fat_dir_entry_struct directory;
+fat_dir_struct *dd;
+fat_file_struct *fd;
+
+// EEPROM variables
+uint8_t EEMEM EEPROM_LCD_Brightness = 128;
+float EEMEM EEPROM_Home_Latitude = 3509.1044;
+float EEMEM EEPROM_Home_Longitude = 10629.9305;
+
+// SRAM Variables from EEPROM
+uint8_t LCD_Brightness;
+float Home_Latitude;
+float Home_Longitude;
+
 int main() {
-	// Turn on interrupt for power on
-	/*DDRD &= ~(1 << DDD2);
-	PORTD |= (1 << PORTD2);
-	EICRA |= (1 << ISC01);
-	EIMSK |= (1 << INT0);	// Turns on INT0*/
+	// Read settings from the EEPROM
+	LCD_Brightness = eeprom_read_byte(&EEPROM_LCD_Brightness);
+	Home_Latitude = eeprom_read_float(&EEPROM_Home_Latitude);
+	Home_Longitude = eeprom_read_float(&EEPROM_Home_Longitude);
 
 	// Init communication
 	UART::initUART(9600, true);
@@ -142,7 +191,7 @@ int main() {
 		// failed MMC/SD init
 	}
 
-	partition_struct *partition = partition_open(sd_raw_read,
+	partition = partition_open(sd_raw_read,
 												 sd_raw_read_interval,
 												 0, 0, 0);
 
@@ -151,15 +200,14 @@ int main() {
 	}
 
 	// open file system
-	fat_fs_struct *fs = fat_open(partition);
+	fs = fat_open(partition);
 	if (!fs) {
 		// failed to open filesystem
 	}
 
 	// open root directory
-	fat_dir_entry_struct directory;
 	fat_get_dir_entry_of_path(fs, "/", &directory);
-	fat_dir_struct *dd = fat_open_dir(fs, &directory);
+	dd = fat_open_dir(fs, &directory);
 	if (!dd) {
 		// failed to open root directory
 	}
@@ -171,7 +219,7 @@ int main() {
 	// 4 bytes = long of y0
 	// 4 bytes = scale X (lat per pixel)
 	// 4 bytes = scale Y (long per pixel)
-	fat_file_struct *fd = open_file_in_dir(fs, dd, "ABQ.trail");
+	fd = open_file_in_dir(fs, dd, "ABQ.trail");
 	if (!fd) {
 		// Error opening file
 		selectLCD();
@@ -197,7 +245,6 @@ int main() {
 	fat_close_file(fd);
 
 	// Load the BMP image
-	int16_t imgWidth, imgHeight;
 	selectLCD();
 	loadBMP(fs, dd, "ABQ.bmp", fd, &imgWidth, &imgHeight);
 
@@ -205,7 +252,23 @@ int main() {
 		response = GPS::loadData(gpsdata);
 
 		switch (currentMode) {
-			case MODE_MAP:
+			case MODE_MENU:
+				if (redraw) {
+					LCD::fillRect(0, 0, 16, 160, WHITE);
+					// Draw the menu cursor
+					LCD::fillRect(11, 26 + menuSelection * 10, 16, 31 + menuSelection * 10, RED);
+					redraw = false;
+				}
+				break;
+			case MODE_SETTINGS:
+				if (redraw) {
+					LCD::fillRect(15, 20, 22, 160, WHITE);
+					// Draw the menu cursor
+					LCD::fillRect(16, settingsSelection*25 + 26, 21, settingsSelection*25 +31, RED);
+					redraw = false;
+				}
+				break;
+			case MODE_MAPVIEW:
 				if (redraw) {
 					// Draw the GPS location
 					imgX = (uint16_t)((float)abs((gpsdata.latitude - x0) / scaleX));
@@ -248,16 +311,7 @@ int main() {
 				}
 
 				break;
-			case MODE_MENU:
-				if (redraw) {
-					LCD::fillRect(0, 0, 16, 160, WHITE);
-					// Draw the menu cursor
-					LCD::fillRect(11, 26 + menuSelection * 10, 16, 31 + menuSelection * 10, RED);
-					redraw = false;
-					//_delay_ms(200);
-				}
-				break;
-			case MODE_SCROLL:
+			case MODE_SCROLLVIEW:
 				if (redraw) {
 					// Draw the GPS location
 					imgX = (uint16_t)((float)abs((latitude - x0) / scaleX));
@@ -299,7 +353,6 @@ int main() {
 			handleInputs();
 		}
 	}
-	fat_close_file(fd);	// Close the image
 	return 0;
 }
 
@@ -307,29 +360,129 @@ void handleInputs() {
 	// Handle button inputs
 	if (!(PIND & (1 << MENUBTN))) {
 		switch (currentMode) {
-			case MODE_MAP:
-				// Display a menu
-				LCD::setOrientation(0);
-				LCD::clearDisp();
-				LCD::drawString("Menu", 25, 10, BLACK);
-				for (uint8_t i = 0; i < menuSize; ++i) {
-					LCD::drawString(menuItems[i], 25, 25 + i * 10, BLACK);
+			case MODE_MENU:
+				if (menuSelection == MODE_MAPVIEW) {
+					currentMode = MODE_MAPVIEW;
+					lastOffsetX = 0;
+					lastOffsetY = 0;
+					loadBMP(fs, dd, "ABQ.bmp", fd, &imgWidth, &imgHeight);
+				} else if (menuSelection == MODE_SCROLLVIEW) {
+					currentMode = MODE_SCROLLVIEW;
+					lastOffsetX = gpsdata.latitude;
+					lastOffsetY = gpsdata.longitude;
+					loadBMP(fs, dd, "ABQ.bmp", fd, &imgWidth, &imgHeight);
+				} else if (menuSelection == MODE_LOADTRAIL) {
+
+				} else if (menuSelection == MODE_SDCARD) {
+					// TODO: Some cool stuff with the files?
+					currentMode = MODE_SDCARD;
+					// Draw the files in the SDCARD
+					LCD::clearDisp();
+					LCD::drawString("SD Card: ", 10, 10, BLACK);
+					fat_reset_dir(dd);
+					fat_dir_entry_struct dir_entry;
+					uint8_t drawRow = 0;
+					while(fat_read_dir(dd, &dir_entry)) {
+						selectLCD();
+						LCD::drawString(dir_entry.long_name, 25, 25 + drawRow*10, BLACK);
+						unselectLCD();
+						++drawRow;
+					}
+					selectLCD();
+				} else if (menuSelection == MODE_SETTINGS) {
+					// Draw setting options and handle saving/loading into EEPROM
+					// Setings: LCD brightness, default Lat/Long
+					currentMode = MODE_SETTINGS;
+					settingsSelection = SETTINGS_BRIGHTNESS;
+					selectLCD();
+					LCD::clearDisp();
+					LCD::drawString("Settings", 10, 10, BLACK);
+					for (uint8_t i = 0; i < settingsSize; ++i) {
+						LCD::drawString(settingsItems[i], 25, 25*(i+1), BLACK);
+					}
+
+					// Draw the values from the EEPROM
+					LCD::drawInt(LCD_Brightness, 50, 35, BLUE);
+					LCD::drawFloat(Home_Latitude, 35, 60, BLUE);
+					LCD::drawFloat(Home_Longitude, 35, 85, BLUE);
+
+					LCD::fillRect(16, settingsSelection*25 + 26, 21, settingsSelection*25 +31, LIME);
+				} else if (menuSelection == MODE_SLEEP) {
+					// Turn on interrupt for power on
+					DDRD &= ~(1 << DDD2);
+					PORTD |= (1 << PORTD2);
+					EICRA |= (1 << ISC01);
+					EIMSK |= (1 << INT0);	// Turns on INT0
+
+					// Turn on the processor
+					lowPowerMode();
+					_delay_ms(1000);
+
+					// Set the AVR to low power
+					set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+					cli();
+					sleep_enable();
+					sei();
+					sleep_cpu();
+					sleep_disable();	// Where program continues
+					normalMode();
+					_delay_ms(1000);
+					EIMSK = 0;	// Turn off the INT0
 				}
-				menuSelection = 0;
+				redraw = true;
+				break;
+			case MODE_MAPVIEW:
+				// Display a menu
+				drawMenu();
+				menuSelection = MODE_MAPVIEW;
+				currentMode = MODE_MENU;
+				redraw = true;
+				fat_close_file(fd);	// Close the image
+				break;
+			case MODE_SCROLLVIEW:
+				// Do an overflow counter, if menuBtn held for long
+				if (!(PIND & (1 << UPBTN)) && !(PIND & (1 << DOWNBTN))) {
+					// Display a menu
+					drawMenu();
+					menuSelection = MODE_MAPVIEW;
+					currentMode = MODE_MENU;
+					redraw = true;
+					fat_close_file(fd);	// Close the image
+					// Delay to prevent multiple menu hits
+					_delay_ms(500);
+				} else 
+					step = -0.0010;
+				break;
+			case MODE_SDCARD:
+				drawMenu();
+				menuSelection = MODE_MAPVIEW;
 				currentMode = MODE_MENU;
 				redraw = true;
 				break;
-			case MODE_MENU:
-				// If going into SCROLL MODE
-				//latitude = gpsdata.latitude;
-				//longitude = gpsdata.longitude;
-				currentMode = MODE_MAP;
-				lastOffsetX = 0;
-				lastOffsetY = 0;
-				redraw = true;
-				break;
-			case MODE_SCROLL:
-				step = -0.0010;
+			case MODE_SETTINGS:
+				if (settingsSelection == SETTINGS_BRIGHTNESS) {
+					if (currentSettingSelection == SETTINGS_MODE_MENU) {
+						currentSettingSelection = SETTINGS_MODE_BRIGHTNESS;
+						currentEditPlace = 0;
+						// Change the brightness
+						LCD::drawIntEdit(LCD_Brightness, currentEditPlace, 50, 35, BLUE, LIME);
+					} else if (currentSettingSelection == SETTINGS_MODE_BRIGHTNESS) {
+						if (++currentEditPlace > BRIGHTNESS_DIGITS) {
+							currentSettingSelection = SETTINGS_MODE_MENU;
+							LCD::drawInt(LCD_Brightness, 50, 35, BLUE);
+						} else {
+							LCD::drawIntEdit(LCD_Brightness, currentEditPlace, 50, 35, BLUE, LIME);
+						}
+					}
+				} else if (settingsSelection == SETTINGS_HOMELAT) {
+
+				} else if (settingsSelection == SETTINGS_HOMELONG) {
+
+				} else if (settingsSelection == SETTINGS_SAVE) {
+
+				} else if (settingsSelection == SETTINGS_EXIT) {
+
+				}
 				break;
 			default:
 				break;
@@ -337,11 +490,12 @@ void handleInputs() {
 		overflowCounter2 = 0;
 	} else {
 		switch (currentMode) {
-			case MODE_MAP:
-				break;
 			case MODE_MENU:
 				break;
-			case MODE_SCROLL:
+			case MODE_MAPVIEW:
+				break;
+			case MODE_SCROLLVIEW:
+				step = 0.0010;
 				break;
 			default:
 				break;
@@ -349,29 +503,42 @@ void handleInputs() {
 	}
 	if (!(PIND & (1 << UPBTN))) {
 		switch (currentMode) {
-			case MODE_MAP:
-				break;
 			case MODE_MENU:
 				if (menuSelection > 0) --menuSelection;
+				else menuSelection = menuSize - 1;
 				redraw = true;
 				break;
-			case MODE_SCROLL:
-				PORTC |= (1 << STATUS1);
+			case MODE_SETTINGS:
+				if (currentSettingSelection == SETTINGS_MODE_MENU) {
+					if (settingsSelection > 0) --settingsSelection;
+					else settingsSelection = settingsSize - 1;
+					redraw = true;
+				} else if (currentSettingSelection == SETTINGS_MODE_BRIGHTNESS) {
+					if (currentEditPlace == 0 && LCD_Brightness <= 155) LCD_Brightness += 100;
+					else if (currentEditPlace == 1 && LCD_Brightness <= 245) LCD_Brightness +=10;
+					else if (currentEditPlace == 2 && LCD_Brightness <= 254) LCD_Brightness +=1;
+					LCD::drawIntEdit(LCD_Brightness, currentEditPlace, 50, 35, BLUE, LIME);
+					OCR0A = LCD_Brightness;
+				}
+				break;
+			case MODE_MAPVIEW:
+				break;
+			case MODE_SCROLLVIEW:
 				latitude += step;
 				redraw = true;
-				_delay_ms(200);
 				break;
 			default:
 				break;
 		}
+		PORTC |= (1 << STATUS1);
 		overflowCounter2 = 0;
 	} else {
 		switch (currentMode) {
-			case MODE_MAP:
-				break;
 			case MODE_MENU:
 				break;
-			case MODE_SCROLL:
+			case MODE_MAPVIEW:
+				break;
+			case MODE_SCROLLVIEW:
 				break;
 			default:
 				break;
@@ -380,34 +547,57 @@ void handleInputs() {
 	}
 	if (!(PIND & (1 << DOWNBTN))) {
 		switch (currentMode) {
-			case MODE_MAP:
-				break;
 			case MODE_MENU:
 				if (menuSelection < menuSize - 1) ++menuSelection;
+				else menuSelection = 0;
 				redraw = true;
 				break;
-			case MODE_SCROLL:
-				PORTC |= (1 << STATUS2);
+			case MODE_SETTINGS:
+				if (currentSettingSelection == SETTINGS_MODE_MENU) {
+					if (settingsSelection < settingsSize - 1) ++settingsSelection;
+					else settingsSelection = 0;
+					redraw = true;
+				} else if (currentSettingSelection == SETTINGS_MODE_BRIGHTNESS) {
+					if (currentEditPlace == 0 && LCD_Brightness >= 100) LCD_Brightness -= 100;
+					else if (currentEditPlace == 1 && LCD_Brightness >=10) LCD_Brightness -=10;
+					else if (currentEditPlace == 2 && LCD_Brightness >=1) LCD_Brightness -=1;
+					LCD::drawIntEdit(LCD_Brightness, currentEditPlace, 50, 35, BLUE, LIME);
+					OCR0A = LCD_Brightness;
+				}
+				break;
+			case MODE_MAPVIEW:
+				break;
+			case MODE_SCROLLVIEW:
 				longitude += step;
 				redraw = true;
-				_delay_ms(200);
 				break;
 			default:
 				break;
 		}
 		overflowCounter2 = 0;
+		PORTC |= (1 << STATUS2);
 	} else {
 		switch (currentMode) {
-			case MODE_MAP:
-				break;
 			case MODE_MENU:
 				break;
-			case MODE_SCROLL:
+			case MODE_MAPVIEW:
+				break;
+			case MODE_SCROLLVIEW:
 				break;
 			default:
 				break;
 		}
 		PORTC &= ~(1 << STATUS2);
+	}
+}
+
+void drawMenu()
+{
+	LCD::setOrientation(0);
+	LCD::clearDisp();
+	LCD::drawString("Menu", 25, 10, BLACK);
+	for (uint8_t i = 0; i < menuSize; ++i) {
+		LCD::drawString(menuItems[i], 25, 25 + i * 10, BLACK);
 	}
 }
 
@@ -555,6 +745,7 @@ ISR (INT0_vect)
 
 	_delay_ms(1500);	// button bouncing
 	*/
+	//EIMSK = 0;
 }
 
 ISR (TIMER2_OVF_vect)
