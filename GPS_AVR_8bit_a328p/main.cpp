@@ -55,6 +55,7 @@ static void drawMenu();
 static void handleInputs();
 static void lowPowerMode();
 static void normalMode();
+static void drawAlectryonLogo(const uint8_t x, const uint8_t y);
 
 const uint8_t HEADERSIZE = 70;	// 54 header + 16 color mask
 const uint8_t LCDWIDTH = 128;
@@ -246,12 +247,14 @@ int main() {
 	fat_close_file(fd);
 
 	// Load the BMP image
+	// TODO File selection based on lat/long
 	selectLCD();
 	loadBMP(fs, dd, "ABQ.bmp", fd, &imgWidth, &imgHeight);
 
 	while (1) {
 		response = GPS::loadData(gpsdata);
 
+		// Redraw, mainly for fast update
 		switch (currentMode) {
 			case MODE_MENU:
 				if (redraw) {
@@ -327,10 +330,10 @@ int main() {
 						drawBMP16(fd, offsetX, offsetY, imgWidth, imgHeight);
 						LCD::fillRect(drawX-4, drawY-4, drawX+4, drawY+4, LIME);
 					} else {
-						// Draw the lat and long text
-						/*LCD::setOrientation(0);
-						LCD::drawString(gpsdata.latStr, 5, 5, BLACK);
-						LCD::drawString(gpsdata.longStr, 5, 15, BLACK);*/
+						// Draw the current lat and long 
+						LCD::setOrientation(0);
+						LCD::drawFloat(latitude, 5, 5, BLACK);
+						LCD::drawFloat(longitude, 5, 15, BLACK);
 						if (abs(lastDrawX - drawX) >= 1 || abs(lastDrawY - drawY) >= 1) {
 							// Just blink the square
 							drawPartBMP16(fd, lastDrawX-8, lastDrawY-8, 16, 16, 
@@ -404,7 +407,7 @@ void handleInputs() {
 
 					// Draw the values from the EEPROM
 					LCD::drawInt(LCD_Brightness, 3, 50, 35, BLUE);
-					LCD::drawInt(GPS_Rate, 5, 50, 60, BLUE);
+					LCD::drawInt(GPS_Rate, 5, 56, 60, BLUE);
 					LCD::drawString(uiModeItems[UI_Mode], 50, 85, BLUE);
 
 					LCD::fillRect(16, settingsSelection*25 + 26, 21, settingsSelection*25 +31, LIME);
@@ -478,10 +481,10 @@ void handleInputs() {
 				} else if (settingsSelection == SETTINGS_GPSRATE) {
 					if (currentSettingSelection == SETTINGS_MODE_MENU) {
 						currentSettingSelection = SETTINGS_MODE_GPSRATE;
-						LCD::drawInt(GPS_Rate, 5, 50, 60, GREEN);
+						LCD::drawInt(GPS_Rate, 5, 56, 60, GREEN);
 					} else if (currentSettingSelection == SETTINGS_MODE_GPSRATE) {
 						currentSettingSelection = SETTINGS_MODE_MENU;
-						LCD::drawInt(GPS_Rate, 5, 50, 60, BLUE);
+						LCD::drawInt(GPS_Rate, 5, 56, 60, BLUE);
 					} 
 				} else if (settingsSelection == SETTINGS_UI) {
 					if (currentSettingSelection == SETTINGS_MODE_MENU) {
@@ -492,9 +495,19 @@ void handleInputs() {
 						LCD::drawString(uiModeItems[UI_Mode], 50, 85, BLUE);
 					} 
 				} else if (settingsSelection == SETTINGS_SAVE) {
+					// Save the settings to EEPROM
+					eeprom_write_byte(&EEPROM_LCD_Brightness, LCD_Brightness);
+					eeprom_write_word(&EEPROM_GPS_Rate, GPS_Rate);
+					eeprom_write_byte(&EEPROM_UI_Mode, UI_Mode);
 
+					// Update the GPS Update rate
+					GPS::setUpdateRate(GPS_Rate);
 				} else if (settingsSelection == SETTINGS_EXIT) {
-
+					// Return back to the main menu
+					drawMenu();
+					menuSelection = MODE_MAPVIEW;
+					currentMode = MODE_MENU;
+					redraw = true;
 				}
 				break;
 			default:
@@ -534,7 +547,7 @@ void handleInputs() {
 					OCR0A = LCD_Brightness;
 				} else if (currentSettingSelection == SETTINGS_MODE_GPSRATE) {
 					if (GPS_Rate < 10000) GPS_Rate += 1000;
-					LCD::drawInt(GPS_Rate, 5, 50, 60, GREEN);
+					LCD::drawInt(GPS_Rate, 5, 56, 60, GREEN);
 				} else if (currentSettingSelection == SETTINGS_MODE_UI) {
 					if (UI_Mode < NUM_UI_MODES - 1) ++UI_Mode;
 					LCD::drawString(uiModeItems[UI_Mode], 50, 85, GREEN);
@@ -584,7 +597,7 @@ void handleInputs() {
 					OCR0A = LCD_Brightness;
 				} else if (currentSettingSelection == SETTINGS_MODE_GPSRATE) {
 					if (GPS_Rate > 1000) GPS_Rate -= 1000;
-					LCD::drawInt(GPS_Rate, 5, 50, 60, GREEN);
+					LCD::drawInt(GPS_Rate, 5, 56, 60, GREEN);
 				} else if (currentSettingSelection == SETTINGS_MODE_UI) {
 					if (UI_Mode > 0) --UI_Mode;
 					LCD::drawString(uiModeItems[UI_Mode], 50, 85, GREEN);
@@ -624,6 +637,7 @@ void drawMenu()
 	for (uint8_t i = 0; i < menuSize; ++i) {
 		LCD::drawString(menuItems[i], 25, 25 + i * 10, BLACK);
 	}
+	drawAlectryonLogo(44, 110);
 }
 
 // This requires width to be a multiple of LCDWIDTH atm..
@@ -688,6 +702,57 @@ void drawPartBMP16(fat_file_struct *fd, const uint16_t x, const uint16_t y,
 			LCD::sendSPI(color);
 		}
 	}
+}
+
+void drawAlectryonLogo(const uint8_t x, const uint8_t y)
+{
+	// Alectryon Logo drawn below the main menu
+	// Width=40, Height=40
+	LCD::fillRect(x, y, x+40, y+40, WHITE);
+	LCD::fillRect(x+10, y+7, x+11, y+13, RED);
+	LCD::fillRect(x+11, y+5, x+13, y+16, RED);
+	LCD::fillRect(x+13, y+6, x+14, y+16, RED);
+	LCD::fillRect(x+14, y+3, x+16, y+17, RED);
+	LCD::fillRect(x+16, y+4, x+17, y+17, RED);
+	LCD::fillRect(x+17, y+6, x+18, y+17, RED);
+	LCD::fillRect(x+18, y+10, x+28, y+39, RED);
+	LCD::fillRect(x+19, y+8, x+23, y+9, RED);
+	LCD::fillRect(x+20, y+7, x+22, y+7, RED);
+	LCD::fillRect(x+21, y+6, x+22, y+6, RED);
+	LCD::fillRect(x+25, y+7, x+27, y+9, RED);
+	LCD::fillRect(x+26, y+4, x+27, y+7, RED);
+	LCD::fillRect(x+27, y+2, x+28, y+4, RED);
+	LCD::fillRect(x+28, y+9, x+29, y+37, RED);
+	LCD::fillRect(x+29, y+7, x+30, y+9, RED);
+	LCD::fillRect(x+30, y+4, x+31, y+6, RED);
+	LCD::fillRect(x+30, y+10, x+32, y+33, RED);
+	LCD::fillRect(x+32, y+8, x+33, y+10, RED);
+	LCD::fillRect(x+33, y+12, x+34, y+24, RED);
+	LCD::fillRect(x+34, y+12, x+35, y+19, RED);
+	LCD::fillRect(x+36, y+16, x+36, y+17, RED);
+	LCD::fillRect(x+35, y+22, x+35, y+25, RED);
+	LCD::fillRect(x+35, y+22, x+35, y+25, RED);
+	LCD::fillRect(x+36, y+24, x+36, y+25, RED);
+	LCD::fillRect(x+33, y+26, x+33, y+31, RED);
+	LCD::fillRect(x+30, y+34, x+30, y+37, RED);
+	LCD::fillRect(x+31, y+34, x+31, y+35, RED);
+	LCD::fillRect(x+0, y+36, x+17, y+39, RED);
+	LCD::fillRect(x+1, y+34, x+17, y+35, RED);
+	LCD::fillRect(x+2, y+32, x+17, y+33, RED);
+	LCD::fillRect(x+2, y+32, x+17, y+33, RED);
+	LCD::fillRect(x+3, y+31, x+17, y+31, RED);
+	LCD::fillRect(x+4, y+30, x+17, y+30, RED);
+	LCD::fillRect(x+4, y+28, x+17, y+29, RED);
+	LCD::fillRect(x+6, y+27, x+17, y+27, RED);
+	LCD::fillRect(x+7, y+26, x+17, y+26, RED);
+	LCD::fillRect(x+8, y+25, x+17, y+25, RED);
+	LCD::fillRect(x+9, y+24, x+17, y+24, RED);
+	LCD::fillRect(x+10, y+23, x+17, y+23, RED);
+	LCD::fillRect(x+11, y+22, x+17, y+22, RED);
+	LCD::fillRect(x+12, y+21, x+17, y+21, RED);
+	LCD::fillRect(x+14, y+20, x+17, y+20, RED);
+	LCD::fillRect(x+15, y+19, x+17, y+19, RED);
+	LCD::fillRect(x+17, y+18, x+17, y+18, RED);
 }
 
 void loadBMP(fat_fs_struct *fs, fat_dir_struct* dd, const char* file, fat_file_struct *fd, 

@@ -99,6 +99,7 @@ namespace GPS
 	void setUpdateRate(int16_t ms)
 	{
 		const char *str;
+		// Switch statement easier
 		switch(ms) {
 			case 1000:
 				str = "$PMTK200,1000*1F\r\n";
