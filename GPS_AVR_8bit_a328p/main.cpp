@@ -90,24 +90,23 @@ uint8_t inputCounter = 0;
 // Setting Variables
 int8_t settingsSelection = 0;
 const uint8_t settingsSize = 5;
-const char* settingsItems[settingsSize] = {"LCD Brightness", "Home Latitude", "Home Longitude", "Save", "Exit"};
+const char* settingsItems[settingsSize] = {"LCD Brightness", "GPS Update Rate", "UI Display", "Save", "Exit"};
 // Selection options
 #define SETTINGS_BRIGHTNESS 0
-#define SETTINGS_HOMELAT 1
-#define SETTINGS_HOMELONG 2
+#define SETTINGS_GPSRATE 1
+#define SETTINGS_UI 2
 #define SETTINGS_SAVE 3
 #define SETTINGS_EXIT 4
 // Selection mode
 #define SETTINGS_MODE_MENU 0
 #define SETTINGS_MODE_BRIGHTNESS 1
-#define SETTINGS_MODE_HOMELAT 2
-#define SETTINGS_MODE_HOMELONG 3
+#define SETTINGS_MODE_GPSRATE 2
+#define SETTINGS_MODE_UI 3
 // Setting edit variables
 uint8_t currentSettingSelection = 0;
 uint8_t currentEditPlace = 0;
 #define BRIGHTNESS_DIGITS 3
-#define HOMELAT_DIGITS 10	// This is including the decimal point
-#define HOMELONG_DIGITS 10	// This is including the decimal point
+#define GPSRATE_DIGITS 5
 
 // Input counter for hold operations
 #define INPUT_TIMER_LIMIT 10
@@ -128,19 +127,21 @@ fat_file_struct *fd;
 
 // EEPROM variables
 uint8_t EEMEM EEPROM_LCD_Brightness = 128;
-float EEMEM EEPROM_Home_Latitude = 3509.1044;
-float EEMEM EEPROM_Home_Longitude = 10629.9305;
+uint16_t EEMEM EEPROM_GPS_Rate = 1000;
+uint8_t EEMEM EEPROM_UI_Mode = 0;
 
 // SRAM Variables from EEPROM
 uint8_t LCD_Brightness;
-float Home_Latitude;
-float Home_Longitude;
+uint16_t GPS_Rate;
+uint8_t UI_Mode;
+#define NUM_UI_MODES 2
+const char* uiModeItems[NUM_UI_MODES] = {"Minimal", "GPS Info"};
 
 int main() {
 	// Read settings from the EEPROM
 	LCD_Brightness = eeprom_read_byte(&EEPROM_LCD_Brightness);
-	Home_Latitude = eeprom_read_float(&EEPROM_Home_Latitude);
-	Home_Longitude = eeprom_read_float(&EEPROM_Home_Longitude);
+	GPS_Rate = eeprom_read_word(&EEPROM_GPS_Rate);
+	UI_Mode = eeprom_read_byte(&EEPROM_UI_Mode);
 
 	// Init communication
 	UART::initUART(9600, true);
@@ -402,9 +403,9 @@ void handleInputs() {
 					}
 
 					// Draw the values from the EEPROM
-					LCD::drawInt(LCD_Brightness, 50, 35, BLUE);
-					LCD::drawFloat(Home_Latitude, 35, 60, BLUE);
-					LCD::drawFloat(Home_Longitude, 35, 85, BLUE);
+					LCD::drawInt(LCD_Brightness, 3, 50, 35, BLUE);
+					LCD::drawInt(GPS_Rate, 5, 50, 60, BLUE);
+					LCD::drawString(uiModeItems[UI_Mode], 50, 85, BLUE);
 
 					LCD::fillRect(16, settingsSelection*25 + 26, 21, settingsSelection*25 +31, LIME);
 				} else if (menuSelection == MODE_SLEEP) {
@@ -467,17 +468,29 @@ void handleInputs() {
 						// Change the brightness
 						LCD::drawIntEdit(LCD_Brightness, currentEditPlace, 50, 35, BLUE, LIME);
 					} else if (currentSettingSelection == SETTINGS_MODE_BRIGHTNESS) {
-						if (++currentEditPlace > BRIGHTNESS_DIGITS) {
+						if (++currentEditPlace >= BRIGHTNESS_DIGITS) {
 							currentSettingSelection = SETTINGS_MODE_MENU;
-							LCD::drawInt(LCD_Brightness, 50, 35, BLUE);
+							LCD::drawInt(LCD_Brightness, 3, 50, 35, BLUE);
 						} else {
 							LCD::drawIntEdit(LCD_Brightness, currentEditPlace, 50, 35, BLUE, LIME);
 						}
-					}
-				} else if (settingsSelection == SETTINGS_HOMELAT) {
-
-				} else if (settingsSelection == SETTINGS_HOMELONG) {
-
+					} 
+				} else if (settingsSelection == SETTINGS_GPSRATE) {
+					if (currentSettingSelection == SETTINGS_MODE_MENU) {
+						currentSettingSelection = SETTINGS_MODE_GPSRATE;
+						LCD::drawInt(GPS_Rate, 5, 50, 60, GREEN);
+					} else if (currentSettingSelection == SETTINGS_MODE_GPSRATE) {
+						currentSettingSelection = SETTINGS_MODE_MENU;
+						LCD::drawInt(GPS_Rate, 5, 50, 60, BLUE);
+					} 
+				} else if (settingsSelection == SETTINGS_UI) {
+					if (currentSettingSelection == SETTINGS_MODE_MENU) {
+						currentSettingSelection = SETTINGS_MODE_UI;
+						LCD::drawString(uiModeItems[UI_Mode], 50, 85, GREEN);
+					} else if (currentSettingSelection == SETTINGS_MODE_UI) {
+						currentSettingSelection = SETTINGS_MODE_MENU;
+						LCD::drawString(uiModeItems[UI_Mode], 50, 85, BLUE);
+					} 
 				} else if (settingsSelection == SETTINGS_SAVE) {
 
 				} else if (settingsSelection == SETTINGS_EXIT) {
@@ -519,6 +532,12 @@ void handleInputs() {
 					else if (currentEditPlace == 2 && LCD_Brightness <= 254) LCD_Brightness +=1;
 					LCD::drawIntEdit(LCD_Brightness, currentEditPlace, 50, 35, BLUE, LIME);
 					OCR0A = LCD_Brightness;
+				} else if (currentSettingSelection == SETTINGS_MODE_GPSRATE) {
+					if (GPS_Rate < 10000) GPS_Rate += 1000;
+					LCD::drawInt(GPS_Rate, 5, 50, 60, GREEN);
+				} else if (currentSettingSelection == SETTINGS_MODE_UI) {
+					if (UI_Mode < NUM_UI_MODES - 1) ++UI_Mode;
+					LCD::drawString(uiModeItems[UI_Mode], 50, 85, GREEN);
 				}
 				break;
 			case MODE_MAPVIEW:
@@ -563,6 +582,12 @@ void handleInputs() {
 					else if (currentEditPlace == 2 && LCD_Brightness >=1) LCD_Brightness -=1;
 					LCD::drawIntEdit(LCD_Brightness, currentEditPlace, 50, 35, BLUE, LIME);
 					OCR0A = LCD_Brightness;
+				} else if (currentSettingSelection == SETTINGS_MODE_GPSRATE) {
+					if (GPS_Rate > 1000) GPS_Rate -= 1000;
+					LCD::drawInt(GPS_Rate, 5, 50, 60, GREEN);
+				} else if (currentSettingSelection == SETTINGS_MODE_UI) {
+					if (UI_Mode > 0) --UI_Mode;
+					LCD::drawString(uiModeItems[UI_Mode], 50, 85, GREEN);
 				}
 				break;
 			case MODE_MAPVIEW:

@@ -36,6 +36,9 @@ namespace GPS
 	// Set the output statement frequencies
 	void setOutputs();
 
+	// Set the update rate (depends on baudrate)
+	void setUpdateRate(int16_t ms);
+
 	// Set GPS into standby mode for power saving
 	void enterStandby();
 

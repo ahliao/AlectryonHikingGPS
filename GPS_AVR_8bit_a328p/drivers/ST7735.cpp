@@ -164,11 +164,12 @@ namespace LCD
 		}
 	}
 
-	void drawInt(uint8_t num, uint8_t x, uint8_t y, uint16_t color)
+	void drawInt(uint16_t num, uint8_t numdigits, uint8_t x, uint8_t y, uint16_t color)
 	{
 		uint8_t xt = x + 18;
 		char ch;
-		while((ch = num % 10) != 0) {
+		while(numdigits-- > 0) {
+			ch = num % 10;
 			putCh(ch + 48, xt, y, color);
 			xt -= 6;
 			num /= 10;

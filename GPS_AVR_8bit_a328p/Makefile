@@ -1,6 +1,6 @@
 HEXFILE = main.hex
 OUTFILE = $(HEXFILE:.hex=.out)
-EEPROMFILE = test.hex 
+EEPROMFILE = eeprom.hex 
 CXX = avr-g++
 CFLAGS = -mmcu=atmega328p -Os -Wall -std=c++0x
 PROGRAMMER = avrisp2
@@ -57,3 +57,7 @@ checklowfuse:
 # sets low fuse bits to default
 setlowfuse:
 	sudo avrdude -c $(PROGRAMMER) -p $(CHIP) -U lfuse:w:0xFF:m
+
+# set high fuse for no EEPROM overwrite
+sethighfuse:
+	sudo avrdude -c $(PROGRAMMER) -p $(CHIP) -U hfuse:w:0xD1:m

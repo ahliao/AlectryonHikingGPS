@@ -95,6 +95,50 @@ namespace GPS
 		}
 	}
 
+	// Set the update rate (depends on baudrate)
+	void setUpdateRate(int16_t ms)
+	{
+		const char *str;
+		switch(ms) {
+			case 1000:
+				str = "$PMTK200,1000*1F\r\n";
+				break;
+			case 2000:
+				str = "$PMTK200,2000*1F\r\n";
+				break;
+			case 3000:
+				str = "$PMTK200,3000*1F\r\n";
+				break;
+			case 4000:
+				str = "$PMTK200,4000*1F\r\n";
+				break;
+			case 5000:
+				str = "$PMTK200,5000*1F\r\n";
+				break;
+			case 6000:
+				str = "$PMTK200,6000*1F\r\n";
+				break;
+			case 7000:
+				str = "$PMTK200,7000*1F\r\n";
+				break;
+			case 8000:
+				str = "$PMTK200,8000*1F\r\n";
+				break;
+			case 9000:
+				str = "$PMTK200,9000*1F\r\n";
+				break;
+			case 10000:
+				str = "$PMTK200,10000*1F\r\n";
+				break;
+			default:
+				str = "$PMTK200,1000*1F\r\n";
+				break;
+		}
+		for (uint8_t i = 0; i < strlen(str); ++i) {
+			UART::writeByte(str[i]);
+		}
+	}
+
 	// Set GPS into standby mode for power saving
 	void enterStandby()
 	{
