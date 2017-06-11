@@ -17,19 +17,19 @@ struct GeoPoint
 
 int main() 
 {
-	const int WIDTH = 640;
-	const int HEIGHT = 1277;
+	const int WIDTH = 2816;
+	const int HEIGHT = 2686;
 
 	GeoPoint p1, p2;
-	p2.latitude = 35.145059;
-	p2.longitude = -106.498018;
-	p2.imgX = 441;
-	p2.imgY = 1009;
+	p2.latitude = 35.175056;
+	p2.longitude = -106.496358;
+	p2.imgX = 1086;
+	p2.imgY = 1845;
 
-	p1.latitude = 35.174526;
-	p1.longitude = -106.515777;
-	p1.imgX = 46;
-	p1.imgY = 1202;
+	p1.latitude = 35.086497;
+	p1.longitude = -106.380553;
+	p1.imgX = 2336;
+	p1.imgY = 507;
 
 	// Calculate the scales
 	double diffX = abs(p2.imgX - p1.imgX);
@@ -54,7 +54,7 @@ int main()
 
 	// Each image should have the (0,0) point and the scales (4 floats)
 	ofstream file;
-	file.open("ABQ.trail", ios::out | ios::binary);
+	file.open("Sandia.trail", ios::out | ios::binary);
 	file.write((char*)&x0, sizeof(x0));
 	file.write((char*)&y0, sizeof(y0));
 	file.write((char*)&scaleX, sizeof(scaleX));

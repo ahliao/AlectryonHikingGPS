@@ -45,6 +45,7 @@ static fat_file_struct* open_file_in_dir(fat_fs_struct* fs,
 		fat_dir_struct* dd, const char* name);
 static void loadBMP(fat_fs_struct *fs, fat_dir_struct* dd, const char* file, 
 		fat_file_struct *fd, int16_t *width, int16_t *height);
+static void readMasterFile(fat_fs_struct *fs, fat_dir_struct* dd, fat_file_struct *fd);
 static void drawBMP16(fat_file_struct *fd, const uint16_t x, 
 		const uint16_t y, const int16_t width, const int16_t height);
 static void drawPartBMP16(fat_file_struct *fd, 
@@ -63,13 +64,19 @@ const uint8_t LCDHEIGHT = 160;
 const uint16_t BUFFERSIZE = 128 * 2;
 uint8_t buffer[BUFFERSIZE]; // Not really the best way...
 
-// Global Variables
+// GPS/Map view variables
 GPS::GPSData gpsdata;
 int16_t imgWidth, imgHeight;
 uint16_t imgX, imgY;
 uint8_t drawX, drawY, lastDrawX = 0, lastDrawY = 0;
 uint16_t offsetX, offsetY;
 uint16_t lastOffsetX = 0, lastOffsetY = 0;
+float latitude = 0, longitude = 0, step = 0;
+bool redraw = false;
+
+// Files to open
+const char *MAPFILE = "Sandia.bmp";
+const char *MAPGEOFILE = "Sandia.trail";
 
 // Timer2 overflow counter
 uint8_t overflowCounter2 = 0;
@@ -77,15 +84,15 @@ uint8_t overflowCounter2 = 0;
 // Menu Variables
 int8_t menuSelection = 0;
 const uint8_t menuSize = 6;
-const char* menuItems[menuSize] = {"Map View", "Scroll View", "Load Trail", "SD Card", "Settings", "Sleep"};
+const char* menuItems[menuSize] = {"Map View", "Scroll View", "SD Card", "Settings", "About", "Sleep"};
 uint8_t inputCounter = 0;
 // Operation Modes
 #define MODE_MENU -1
 #define MODE_MAPVIEW 0
 #define MODE_SCROLLVIEW 1
-#define MODE_LOADTRAIL 2
-#define MODE_SDCARD 3
-#define MODE_SETTINGS 4
+#define MODE_SDCARD 2
+#define MODE_SETTINGS 3
+#define MODE_ABOUT 4
 #define MODE_SLEEP 5
 
 // Setting Variables
@@ -112,12 +119,12 @@ uint8_t currentEditPlace = 0;
 // Input counter for hold operations
 #define INPUT_TIMER_LIMIT 10
 
+// Firmware and Hardware versions
+#define FIRMWARE_VER "0.7"
+#define HARDWARE_VER "1.0"
+
 // Current mode of the tool
 int8_t currentMode = MODE_MAPVIEW;
-
-// Temp testing stuff
-float latitude = 0, longitude = 0, step = 0;
-bool redraw = false;
 
 // SD Card variables
 partition_struct *partition;
@@ -221,7 +228,7 @@ int main() {
 	// 4 bytes = long of y0
 	// 4 bytes = scale X (lat per pixel)
 	// 4 bytes = scale Y (long per pixel)
-	fd = open_file_in_dir(fs, dd, "ABQ.trail");
+	fd = open_file_in_dir(fs, dd, MAPGEOFILE);
 	if (!fd) {
 		// Error opening file
 		selectLCD();
@@ -249,7 +256,7 @@ int main() {
 	// Load the BMP image
 	// TODO File selection based on lat/long
 	selectLCD();
-	loadBMP(fs, dd, "ABQ.bmp", fd, &imgWidth, &imgHeight);
+	loadBMP(fs, dd, MAPFILE, fd, &imgWidth, &imgHeight);
 
 	while (1) {
 		response = GPS::loadData(gpsdata);
@@ -369,14 +376,28 @@ void handleInputs() {
 					currentMode = MODE_MAPVIEW;
 					lastOffsetX = 0;
 					lastOffsetY = 0;
-					loadBMP(fs, dd, "ABQ.bmp", fd, &imgWidth, &imgHeight);
+					loadBMP(fs, dd, MAPFILE, fd, &imgWidth, &imgHeight);
 				} else if (menuSelection == MODE_SCROLLVIEW) {
 					currentMode = MODE_SCROLLVIEW;
 					lastOffsetX = gpsdata.latitude;
 					lastOffsetY = gpsdata.longitude;
-					loadBMP(fs, dd, "ABQ.bmp", fd, &imgWidth, &imgHeight);
-				} else if (menuSelection == MODE_LOADTRAIL) {
+					loadBMP(fs, dd, MAPFILE, fd, &imgWidth, &imgHeight);
+				} else if (menuSelection == MODE_ABOUT) {
+					currentMode = MODE_ABOUT;
+					// Display Alectyron logo
+					LCD::clearDisp();
+					drawAlectryonLogo(44, 0);
+					LCD::drawString("Alectryon", 35, 45, BLACK);
+					LCD::drawString("Technologies", 25, 55, BLACK);
 
+					// Display firmware and hardware versions
+					LCD::drawString("Firmware Version:", 15, 70, BLACK);
+					LCD::drawString(FIRMWARE_VER, 53, 80, BLACK);
+					LCD::drawString("Hardware Version:", 15, 95, BLACK);
+					LCD::drawString(HARDWARE_VER, 53, 105, BLACK);
+					LCD::drawString("Created By:", 30, 120, BLACK);
+					LCD::drawString("Alex Liao", 35, 130, BLACK);
+					LCD::drawString("Clark Zhang", 30, 140, BLACK);
 				} else if (menuSelection == MODE_SDCARD) {
 					// TODO: Some cool stuff with the files?
 					currentMode = MODE_SDCARD;
@@ -448,7 +469,7 @@ void handleInputs() {
 				if (!(PIND & (1 << UPBTN)) && !(PIND & (1 << DOWNBTN))) {
 					// Display a menu
 					drawMenu();
-					menuSelection = MODE_MAPVIEW;
+					menuSelection = MODE_SCROLLVIEW;
 					currentMode = MODE_MENU;
 					redraw = true;
 					fat_close_file(fd);	// Close the image
@@ -459,7 +480,13 @@ void handleInputs() {
 				break;
 			case MODE_SDCARD:
 				drawMenu();
-				menuSelection = MODE_MAPVIEW;
+				menuSelection = MODE_SDCARD;
+				currentMode = MODE_MENU;
+				redraw = true;
+				break;
+			case MODE_ABOUT:
+				drawMenu();
+				menuSelection = MODE_ABOUT;
 				currentMode = MODE_MENU;
 				redraw = true;
 				break;
@@ -502,10 +529,16 @@ void handleInputs() {
 
 					// Update the GPS Update rate
 					GPS::setUpdateRate(GPS_Rate);
-				} else if (settingsSelection == SETTINGS_EXIT) {
+
 					// Return back to the main menu
 					drawMenu();
 					menuSelection = MODE_MAPVIEW;
+					currentMode = MODE_MENU;
+					redraw = true;
+				} else if (settingsSelection == SETTINGS_EXIT) {
+					// Return back to the main menu
+					drawMenu();
+					menuSelection = MODE_SETTINGS;
 					currentMode = MODE_MENU;
 					redraw = true;
 				}
@@ -637,7 +670,7 @@ void drawMenu()
 	for (uint8_t i = 0; i < menuSize; ++i) {
 		LCD::drawString(menuItems[i], 25, 25 + i * 10, BLACK);
 	}
-	drawAlectryonLogo(44, 110);
+	drawAlectryonLogo(44, 120);
 }
 
 // This requires width to be a multiple of LCDWIDTH atm..
@@ -753,6 +786,43 @@ void drawAlectryonLogo(const uint8_t x, const uint8_t y)
 	LCD::fillRect(x+14, y+20, x+17, y+20, RED);
 	LCD::fillRect(x+15, y+19, x+17, y+19, RED);
 	LCD::fillRect(x+17, y+18, x+17, y+18, RED);
+}
+
+void readMasterFile(fat_fs_struct *fs, fat_dir_struct* dd, fat_file_struct *fd)
+{
+	// Read the master.list file containing filenames with lat/long scale and (0,0)
+	// This file holds the geo-referencing data
+	// Format: 
+	// 4 bytes = lat of x0
+	// 4 bytes = long of y0
+	// 4 bytes = scale X (lat per pixel)
+	// 4 bytes = scale Y (long per pixel)
+	fd = open_file_in_dir(fs, dd, "master.list");
+	if (!fd) {
+		// Error opening file
+		selectLCD();
+		LCD::drawString("Error", 50, 70, BLACK);
+		unselectLCD();
+		return;
+	}
+	uint8_t buffer[16];
+	fat_read_file(fd, buffer, sizeof(buffer));
+	uint32_t temp;
+	float m_x0, m_y0, m_scaleX, m_scaleY;
+	temp = (uint32_t)buffer[0] | (uint32_t)buffer[1] << 8 
+		| (uint32_t)buffer[2] << 16 | (uint32_t)buffer[3] << 24;
+	memcpy(&m_x0, &temp, sizeof(m_x0));
+	temp = (uint32_t)buffer[4] | (uint32_t)buffer[5] << 8 
+		| (uint32_t)buffer[6] << 16 | (uint32_t)buffer[7] << 24;
+	memcpy(&m_y0, &temp, sizeof(m_y0));
+	temp = (uint32_t)buffer[8] | (uint32_t)buffer[9] << 8 
+		| (uint32_t)buffer[10] << 16 | (uint32_t)buffer[11] << 24;
+	memcpy(&m_scaleX, &temp, sizeof(m_scaleX));
+	temp = (uint32_t)buffer[12] | (uint32_t)buffer[13] << 8 
+		| (uint32_t)buffer[14] << 16 | (uint32_t)buffer[15] << 24;
+	memcpy(&m_scaleY, &temp, sizeof(m_scaleY));
+
+	fat_close_file(fd);
 }
 
 void loadBMP(fat_fs_struct *fs, fat_dir_struct* dd, const char* file, fat_file_struct *fd, 
