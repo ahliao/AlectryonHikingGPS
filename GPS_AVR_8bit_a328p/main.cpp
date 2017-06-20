@@ -2,7 +2,7 @@
 // Processor: Atmel atmega328p
 // Author: Alex Liao
 // Company: Alectryon Technologies
-// Date created: 4/27/2014
+// Date created: 4/27/2017
 
 // Clock speed
 #define F_CPU 16000000UL
@@ -13,6 +13,7 @@
 #include <avr/sleep.h>
 #include <avr/power.h>
 #include <avr/eeprom.h>
+#include <avr/pgmspace.h>
 #include <util/delay.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,8 +36,8 @@
 #define STATUS1 0
 #define STATUS2 1
 #define MENUBTN 2
-#define UPBTN 3
-#define DOWNBTN 4
+#define UPBTN 4
+#define DOWNBTN 3
 
 // function prototypes
 static uint8_t find_file_in_dir(fat_fs_struct* fs, fat_dir_struct* dd, 
@@ -58,11 +59,16 @@ static void lowPowerMode();
 static void normalMode();
 static void drawAlectryonLogo(const uint8_t x, const uint8_t y);
 
-const uint8_t HEADERSIZE = 70;	// 54 header + 16 color mask
+#define HEADERSIZE 70
+#define LCDWIDTH 128
+#define LCDHEIGHT 160
+#define BUFFERSIZE 256
+/*const uint8_t HEADERSIZE = 70;	// 54 header + 16 color mask
 const uint8_t LCDWIDTH = 128;
 const uint8_t LCDHEIGHT = 160;
-const uint16_t BUFFERSIZE = 128 * 2;
+const uint16_t BUFFERSIZE = 128 * 2;*/
 uint8_t buffer[BUFFERSIZE]; // Not really the best way...
+char strbuffer[24];
 
 // GPS/Map view variables
 GPS::GPSData gpsdata;
@@ -84,7 +90,21 @@ uint8_t overflowCounter2 = 0;
 // Menu Variables
 int8_t menuSelection = 0;
 const uint8_t menuSize = 6;
-const char* menuItems[menuSize] = {"Map View", "Scroll View", "SD Card", "Settings", "About", "Sleep"};
+const char menuItem0[] PROGMEM = "Map View";
+const char menuItem1[] PROGMEM = "Scroll View";
+const char menuItem2[] PROGMEM = "SD Card";
+const char menuItem3[] PROGMEM = "Settings";
+const char menuItem4[] PROGMEM = "About";
+const char menuItem5[] PROGMEM = "Sleep";
+PGM_P const menuItems[] PROGMEM = 
+{
+	menuItem0,
+	menuItem1,
+	menuItem2,
+	menuItem3,
+	menuItem4,
+	menuItem5
+};
 uint8_t inputCounter = 0;
 // Operation Modes
 #define MODE_MENU -1
@@ -98,7 +118,19 @@ uint8_t inputCounter = 0;
 // Setting Variables
 int8_t settingsSelection = 0;
 const uint8_t settingsSize = 5;
-const char* settingsItems[settingsSize] = {"LCD Brightness", "GPS Update Rate", "UI Display", "Save", "Exit"};
+const char settingItem0[] PROGMEM = "LCD Brightness";
+const char settingItem1[] PROGMEM = "GPS Update Rate";
+const char settingItem2[] PROGMEM = "UI Display";
+const char settingItem3[] PROGMEM = "Save & Exit";
+const char settingItem4[] PROGMEM = "Exit";
+PGM_P const settingsItems[] PROGMEM =
+{
+	settingItem0,
+	settingItem1,
+	settingItem2,
+	settingItem3,
+	settingItem4
+};
 // Selection options
 #define SETTINGS_BRIGHTNESS 0
 #define SETTINGS_GPSRATE 1
@@ -120,8 +152,15 @@ uint8_t currentEditPlace = 0;
 #define INPUT_TIMER_LIMIT 10
 
 // Firmware and Hardware versions
-#define FIRMWARE_VER "0.7"
+#define FIRMWARE_VER "0.8"
 #define HARDWARE_VER "1.0"
+const char ABOUT_0[] PROGMEM = "Alectryon";
+const char ABOUT_1[] PROGMEM = "Technologies";
+const char ABOUT_2[] PROGMEM = "Firmware Version:";
+const char ABOUT_3[] PROGMEM = "Hardware Version:";
+const char ABOUT_4[] PROGMEM = "Created By:";
+const char ABOUT_5[] PROGMEM = "Alex Liao";
+const char ABOUT_6[] PROGMEM = "Clark Zhang";
 
 // Current mode of the tool
 int8_t currentMode = MODE_MAPVIEW;
@@ -143,9 +182,19 @@ uint8_t LCD_Brightness;
 uint16_t GPS_Rate;
 uint8_t UI_Mode;
 #define NUM_UI_MODES 2
-const char* uiModeItems[NUM_UI_MODES] = {"Minimal", "GPS Info"};
+const char UIModeItem0[] PROGMEM = "Minimal ";
+const char UIModeItem1[] PROGMEM = "GPS Info";
+PGM_P const uiModeItems[] PROGMEM =
+{
+	UIModeItem0,
+	UIModeItem1
+};
 
 int main() {
+	// Init the gpsdata
+	gpsdata.numsats = 0;
+	gpsdata.altitude = 0;
+	gpsdata.status = GPS_NOFIX;
 	// Read settings from the EEPROM
 	LCD_Brightness = eeprom_read_byte(&EEPROM_LCD_Brightness);
 	GPS_Rate = eeprom_read_word(&EEPROM_GPS_Rate);
@@ -235,20 +284,20 @@ int main() {
 		LCD::drawString("Error", 50, 70, BLACK);
 		unselectLCD();
 	}
-	uint8_t buffer[16];
-	fat_read_file(fd, buffer, sizeof(buffer));
+	uint8_t scalebuffer[16];
+	fat_read_file(fd, scalebuffer, sizeof(scalebuffer));
 	float x0, y0, scaleX, scaleY;
-	temp = (uint32_t)buffer[0] | (uint32_t)buffer[1] << 8 
-		| (uint32_t)buffer[2] << 16 | (uint32_t)buffer[3] << 24;
+	temp = (uint32_t)scalebuffer[0] | (uint32_t)scalebuffer[1] << 8 
+		| (uint32_t)scalebuffer[2] << 16 | (uint32_t)scalebuffer[3] << 24;
 	memcpy(&x0, &temp, sizeof(x0));
-	temp = (uint32_t)buffer[4] | (uint32_t)buffer[5] << 8 
-		| (uint32_t)buffer[6] << 16 | (uint32_t)buffer[7] << 24;
+	temp = (uint32_t)scalebuffer[4] | (uint32_t)scalebuffer[5] << 8 
+		| (uint32_t)scalebuffer[6] << 16 | (uint32_t)scalebuffer[7] << 24;
 	memcpy(&y0, &temp, sizeof(y0));
-	temp = (uint32_t)buffer[8] | (uint32_t)buffer[9] << 8 
-		| (uint32_t)buffer[10] << 16 | (uint32_t)buffer[11] << 24;
+	temp = (uint32_t)scalebuffer[8] | (uint32_t)scalebuffer[9] << 8 
+		| (uint32_t)scalebuffer[10] << 16 | (uint32_t)scalebuffer[11] << 24;
 	memcpy(&scaleX, &temp, sizeof(scaleX));
-	temp = (uint32_t)buffer[12] | (uint32_t)buffer[13] << 8 
-		| (uint32_t)buffer[14] << 16 | (uint32_t)buffer[15] << 24;
+	temp = (uint32_t)scalebuffer[12] | (uint32_t)scalebuffer[13] << 8 
+		| (uint32_t)scalebuffer[14] << 16 | (uint32_t)scalebuffer[15] << 24;
 	memcpy(&scaleY, &temp, sizeof(scaleY));
 
 	fat_close_file(fd);
@@ -296,8 +345,31 @@ int main() {
 					} else {
 						// Draw the lat and long text
 						LCD::setOrientation(0);
-						LCD::drawString(gpsdata.latStr, 5, 5, BLACK);
-						LCD::drawString(gpsdata.longStr, 5, 15, BLACK);
+						if (gpsdata.status == GPS_NOFIX) 
+							LCD::drawString("No Fix  ", 5, 5, RED);
+						else if (gpsdata.status == GPS_GPSFIX)
+							LCD::drawString("GPS Fix ", 5, 5, BLUE);
+						else if (gpsdata.status == GPS_DIFF)
+							LCD::drawString("Diff GPS", 5, 5, BLUE);
+						LCD::drawString("# Sats:", 70, 5, BLACK);
+						LCD::drawInt(gpsdata.numsats, 2, 100, 5, BLUE);
+						LCD::drawString("Time:", 5, 15, BLACK);
+						// Draw time in format
+						uint8_t hour = gpsdata.time/10000;
+						uint8_t min = (gpsdata.time-10000*hour)/100;
+						uint8_t sec = (gpsdata.time-10000*hour-100*min);
+						LCD::drawString("  :  :", 38, 15, BLACK);
+						LCD::drawInt(hour, 2, 26, 15, BLUE);
+						LCD::drawInt(min, 2, 44, 15, BLUE);
+						LCD::drawInt(sec, 2, 62, 15, BLUE);
+						LCD::drawString("Altitude:", 5, 25, BLACK);
+						LCD::drawInt(gpsdata.altitude, 5, 65, 25, BLUE);
+						if (UI_Mode == 1) {
+							LCD::drawString("Lat:", 5, 35, BLACK);
+							LCD::drawFloat(gpsdata.latitude, 38, 35, BLUE);
+							LCD::drawString("Long:", 5, 45, BLACK);
+							LCD::drawFloat(gpsdata.longitude, 38, 45, BLUE);
+						}
 						if (abs(lastDrawX - drawX) >= 1 || abs(lastDrawY - drawY) >= 1) {
 							// Just blink the square
 							drawPartBMP16(fd, lastDrawX-8, lastDrawY-8, 16, 16, 
@@ -313,7 +385,7 @@ int main() {
 					lastDrawY = drawY;
 				}
 
-				if (response == GPS::GPGGA) {
+				if (response == NMEA_GPGGA) {
 					redraw = true;
 					if (latitude == 0) {
 						latitude = gpsdata.latitude;
@@ -336,11 +408,18 @@ int main() {
 					if (lastOffsetX != offsetX || lastOffsetY != offsetY) {
 						drawBMP16(fd, offsetX, offsetY, imgWidth, imgHeight);
 						LCD::fillRect(drawX-4, drawY-4, drawX+4, drawY+4, LIME);
+						LCD::setOrientation(0);
+						LCD::drawString("Lat:", 5, 5, BLACK);
+						LCD::drawFloat(latitude, 38, 5, BLUE);
+						LCD::drawString("Long:", 5, 15, BLACK);
+						LCD::drawFloat(longitude, 38, 15, BLUE);
 					} else {
 						// Draw the current lat and long 
 						LCD::setOrientation(0);
-						LCD::drawFloat(latitude, 5, 5, BLACK);
-						LCD::drawFloat(longitude, 5, 15, BLACK);
+						LCD::drawString("Lat:", 5, 5, BLACK);
+						LCD::drawFloat(latitude, 38, 5, BLUE);
+						LCD::drawString("Long:", 5, 15, BLACK);
+						LCD::drawFloat(longitude, 38, 15, BLUE);
 						if (abs(lastDrawX - drawX) >= 1 || abs(lastDrawY - drawY) >= 1) {
 							// Just blink the square
 							drawPartBMP16(fd, lastDrawX-8, lastDrawY-8, 16, 16, 
@@ -387,17 +466,24 @@ void handleInputs() {
 					// Display Alectyron logo
 					LCD::clearDisp();
 					drawAlectryonLogo(44, 0);
-					LCD::drawString("Alectryon", 35, 45, BLACK);
-					LCD::drawString("Technologies", 25, 55, BLACK);
+					strcpy_P(strbuffer, ABOUT_0);
+					LCD::drawString(strbuffer, 35, 45, BLACK);
+					strcpy_P(strbuffer, ABOUT_1);
+					LCD::drawString(strbuffer, 25, 55, BLACK);
 
 					// Display firmware and hardware versions
-					LCD::drawString("Firmware Version:", 15, 70, BLACK);
+					strcpy_P(strbuffer, ABOUT_2);
+					LCD::drawString(strbuffer, 15, 70, BLACK);
 					LCD::drawString(FIRMWARE_VER, 53, 80, BLACK);
-					LCD::drawString("Hardware Version:", 15, 95, BLACK);
+					strcpy_P(strbuffer, ABOUT_3);
+					LCD::drawString(strbuffer, 15, 95, BLACK);
 					LCD::drawString(HARDWARE_VER, 53, 105, BLACK);
-					LCD::drawString("Created By:", 30, 120, BLACK);
-					LCD::drawString("Alex Liao", 35, 130, BLACK);
-					LCD::drawString("Clark Zhang", 30, 140, BLACK);
+					strcpy_P(strbuffer, ABOUT_4);
+					LCD::drawString(strbuffer, 30, 120, BLACK);
+					strcpy_P(strbuffer, ABOUT_5);
+					LCD::drawString(strbuffer, 35, 130, BLACK);
+					strcpy_P(strbuffer, ABOUT_6);
+					LCD::drawString(strbuffer, 30, 140, BLACK);
 				} else if (menuSelection == MODE_SDCARD) {
 					// TODO: Some cool stuff with the files?
 					currentMode = MODE_SDCARD;
@@ -422,14 +508,17 @@ void handleInputs() {
 					selectLCD();
 					LCD::clearDisp();
 					LCD::drawString("Settings", 10, 10, BLACK);
+					
 					for (uint8_t i = 0; i < settingsSize; ++i) {
-						LCD::drawString(settingsItems[i], 25, 25*(i+1), BLACK);
+						strcpy_P(strbuffer, (PGM_P)pgm_read_word(&(settingsItems[i])));
+						LCD::drawString(strbuffer, 25, 25*(i+1), BLACK);
 					}
 
 					// Draw the values from the EEPROM
 					LCD::drawInt(LCD_Brightness, 3, 50, 35, BLUE);
 					LCD::drawInt(GPS_Rate, 5, 56, 60, BLUE);
-					LCD::drawString(uiModeItems[UI_Mode], 50, 85, BLUE);
+					strcpy_P(strbuffer, (PGM_P)pgm_read_word(&(uiModeItems[UI_Mode])));
+					LCD::drawString(strbuffer, 50, 85, BLUE);
 
 					LCD::fillRect(16, settingsSelection*25 + 26, 21, settingsSelection*25 +31, LIME);
 				} else if (menuSelection == MODE_SLEEP) {
@@ -452,6 +541,7 @@ void handleInputs() {
 					sleep_disable();	// Where program continues
 					normalMode();
 					_delay_ms(1000);
+					EICRA &= ~(1 << ISC01);
 					EIMSK = 0;	// Turn off the INT0
 				}
 				redraw = true;
@@ -516,10 +606,12 @@ void handleInputs() {
 				} else if (settingsSelection == SETTINGS_UI) {
 					if (currentSettingSelection == SETTINGS_MODE_MENU) {
 						currentSettingSelection = SETTINGS_MODE_UI;
-						LCD::drawString(uiModeItems[UI_Mode], 50, 85, GREEN);
+						strcpy_P(strbuffer, (PGM_P)pgm_read_word(&(uiModeItems[UI_Mode])));
+						LCD::drawString(strbuffer, 50, 85, GREEN);
 					} else if (currentSettingSelection == SETTINGS_MODE_UI) {
 						currentSettingSelection = SETTINGS_MODE_MENU;
-						LCD::drawString(uiModeItems[UI_Mode], 50, 85, BLUE);
+						strcpy_P(strbuffer, (PGM_P)pgm_read_word(&(uiModeItems[UI_Mode])));
+						LCD::drawString(strbuffer, 50, 85, BLUE);
 					} 
 				} else if (settingsSelection == SETTINGS_SAVE) {
 					// Save the settings to EEPROM
@@ -583,7 +675,8 @@ void handleInputs() {
 					LCD::drawInt(GPS_Rate, 5, 56, 60, GREEN);
 				} else if (currentSettingSelection == SETTINGS_MODE_UI) {
 					if (UI_Mode < NUM_UI_MODES - 1) ++UI_Mode;
-					LCD::drawString(uiModeItems[UI_Mode], 50, 85, GREEN);
+					strcpy_P(strbuffer, (PGM_P)pgm_read_word(&(uiModeItems[UI_Mode])));
+					LCD::drawString(strbuffer, 50, 85, GREEN);
 				}
 				break;
 			case MODE_MAPVIEW:
@@ -633,7 +726,8 @@ void handleInputs() {
 					LCD::drawInt(GPS_Rate, 5, 56, 60, GREEN);
 				} else if (currentSettingSelection == SETTINGS_MODE_UI) {
 					if (UI_Mode > 0) --UI_Mode;
-					LCD::drawString(uiModeItems[UI_Mode], 50, 85, GREEN);
+					strcpy_P(strbuffer, (PGM_P)pgm_read_word(&(uiModeItems[UI_Mode])));
+					LCD::drawString(strbuffer, 50, 85, GREEN);
 				}
 				break;
 			case MODE_MAPVIEW:
@@ -668,7 +762,8 @@ void drawMenu()
 	LCD::clearDisp();
 	LCD::drawString("Menu", 25, 10, BLACK);
 	for (uint8_t i = 0; i < menuSize; ++i) {
-		LCD::drawString(menuItems[i], 25, 25 + i * 10, BLACK);
+		strcpy_P(strbuffer, (PGM_P)pgm_read_word(&(menuItems[i])));
+		LCD::drawString(strbuffer, 25, 25 + i * 10, BLACK);
 	}
 	drawAlectryonLogo(44, 120);
 }
@@ -686,6 +781,7 @@ void drawBMP16(fat_file_struct *fd, const uint16_t x, const uint16_t y,
 	fat_seek_file(fd, &offset, FAT_SEEK_SET);
 
 	selectLCD();
+
 	LCD::setOrientation(4);
 	LCD::setAddrWindow(0, 0, LCDWIDTH, LCDHEIGHT);
 	LCD::writeCmd(RAMWR);
@@ -832,10 +928,20 @@ void loadBMP(fat_fs_struct *fs, fat_dir_struct* dd, const char* file, fat_file_s
 	fd = open_file_in_dir(fs, dd, file);
 	if (!fd) {
 		// Error opening file
+		selectLCD();
+		LCD::drawString("Error Opening SD Card", 10, 100, BLACK);
+		unselectLCD();
+		_delay_ms(1000);
 	}
 
 	// Read the bmp header
-	fat_read_file(fd, buffer, HEADERSIZE);
+	intptr_t ret = fat_read_file(fd, buffer, HEADERSIZE);
+	if (ret == -1) {
+		selectLCD();
+		LCD::drawString("Error Opening File", 10, 100, BLACK);
+		unselectLCD();
+		_delay_ms(1000);
+	}
 	// width and height will likely never need 32-bits
 	*width = buffer[18] | (((uint16_t)buffer[19]) << 8);
 	*height = buffer[22] | (((uint16_t)buffer[23]) << 8);
@@ -878,6 +984,7 @@ void lowPowerMode()
 
 void normalMode()
 {
+	//UART::initUART(9600, true);
 	selectLCD();
 	// Turn on LCD and PWM backlight
 	LCD::writeCmd(SLPOUT);
@@ -889,23 +996,7 @@ void normalMode()
 
 ISR (INT0_vect)
 {
-	/*
-	cli();
-	// Turn on the processor
-	lowPowerMode();
-	_delay_ms(1500);	// button bouncing
 
-	// Set the AVR to low power
-	set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-	sleep_enable();
-	sei();
-	sleep_cpu();
-	sleep_disable();	// Where program continues
-	normalMode();
-
-	_delay_ms(1500);	// button bouncing
-	*/
-	//EIMSK = 0;
 }
 
 ISR (TIMER2_OVF_vect)

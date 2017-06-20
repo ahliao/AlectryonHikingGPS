@@ -7,8 +7,8 @@ namespace GPS
 	static char *token;
 	static char *deg;
 
-	NMEA loadData(GPSData &gpsdata) {
-		NMEA response = NONE;
+	uint8_t loadData(GPSData &gpsdata) {
+		uint8_t response = NMEA_NONE;
 
 		if (UART::UART_newData) {
 			GPSBuffer[readIndex] = UART::UART_data;
@@ -27,7 +27,7 @@ namespace GPS
 
 					// Latitude of position
 					token = strtok(NULL, ",");
-					gpsdata.latStr = token;
+					//gpsdata.latStr = token;
 					//token = strcat(token, strtok(NULL, ","));
 					// First take the integer value divide 100
 					gpsdata.latitude = atoi(token)/100;
@@ -42,7 +42,7 @@ namespace GPS
 
 					// Longitude of position
 					token = strtok(NULL, ",");
-					gpsdata.longStr = token;
+					//gpsdata.longStr = token;
 					//token = strcat(token, strtok(NULL, ","));
 					gpsdata.longitude = atoi(token)/100;
 					deg = strrchr(token, '.');
@@ -72,7 +72,7 @@ namespace GPS
 					// Altitude units (meters)
 					token = strtok(NULL, ",");
 				
-					response = GPGGA;
+					response = NMEA_GPGGA;
 				}
 				for (uint8_t a = 0; a < strlen(GPSBuffer); ++a) {
 					GPSBuffer[a] = 0;
@@ -89,69 +89,34 @@ namespace GPS
 	// Sets so only NMEA GGA statements are 1 per fix
 	void setOutputs()
 	{
-		char str[] = "$PMTK314,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*2C\r\n";
-		for (uint8_t i = 0; i < strlen(str); ++i) {
-			UART::writeByte(str[i]);
+		strcpy_P(gpscmdstr, CMD_OUTPUT);
+		for (uint8_t i = 0; i < strlen(gpscmdstr); ++i) {
+			UART::writeByte(gpscmdstr[i]);
 		}
 	}
 
 	// Set the update rate (depends on baudrate)
 	void setUpdateRate(int16_t ms)
 	{
-		const char *str;
 		// Switch statement easier
-		switch(ms) {
-			case 1000:
-				str = "$PMTK200,1000*1F\r\n";
-				break;
-			case 2000:
-				str = "$PMTK200,2000*1F\r\n";
-				break;
-			case 3000:
-				str = "$PMTK200,3000*1F\r\n";
-				break;
-			case 4000:
-				str = "$PMTK200,4000*1F\r\n";
-				break;
-			case 5000:
-				str = "$PMTK200,5000*1F\r\n";
-				break;
-			case 6000:
-				str = "$PMTK200,6000*1F\r\n";
-				break;
-			case 7000:
-				str = "$PMTK200,7000*1F\r\n";
-				break;
-			case 8000:
-				str = "$PMTK200,8000*1F\r\n";
-				break;
-			case 9000:
-				str = "$PMTK200,9000*1F\r\n";
-				break;
-			case 10000:
-				str = "$PMTK200,10000*1F\r\n";
-				break;
-			default:
-				str = "$PMTK200,1000*1F\r\n";
-				break;
-		}
-		for (uint8_t i = 0; i < strlen(str); ++i) {
-			UART::writeByte(str[i]);
+		strcpy_P(gpscmdstr, (PGM_P)pgm_read_word(&(CMD_RATES[ms/1000])));
+		for (uint8_t i = 0; i < strlen(gpscmdstr); ++i) {
+			UART::writeByte(gpscmdstr[i]);
 		}
 	}
 
 	// Set GPS into standby mode for power saving
 	void enterStandby()
 	{
-		char str[] = "$PMTK161,0*28\r\n";
-		for (uint8_t i = 0; i < strlen(str); ++i) {
-			UART::writeByte(str[i]);
+		strcpy_P(gpscmdstr, CMD_STANDBY);
+		for (uint8_t i = 0; i < strlen(gpscmdstr); ++i) {
+			UART::writeByte(gpscmdstr[i]);
 		}
 	}
 
 	// Wake up by sending any byte
 	void wakeup()
 	{
-		UART::writeByte('a');
+		UART::writeByte(' ');
 	}
 }

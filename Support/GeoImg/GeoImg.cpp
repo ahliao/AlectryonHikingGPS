@@ -17,19 +17,19 @@ struct GeoPoint
 
 int main() 
 {
-	const int WIDTH = 2816;
-	const int HEIGHT = 2686;
+	const int WIDTH = 2560;
+	const int HEIGHT = 1643;
 
 	GeoPoint p1, p2;
-	p2.latitude = 35.175056;
-	p2.longitude = -106.496358;
-	p2.imgX = 1086;
-	p2.imgY = 1845;
+	p2.latitude = 35.190435;
+	p2.longitude = -106.496140;
+	p2.imgX = 819;
+	p2.imgY = 1422;
 
 	p1.latitude = 35.086497;
 	p1.longitude = -106.380553;
-	p1.imgX = 2336;
-	p1.imgY = 507;
+	p1.imgX = 2212;
+	p1.imgY = 155;
 
 	// Calculate the scales
 	double diffX = abs(p2.imgX - p1.imgX);

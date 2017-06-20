@@ -190,12 +190,20 @@ namespace LCD
 		}
 	}
 
-	void drawFloat(const double f, uint8_t x, uint8_t y, uint16_t color)
+	void drawFloat(double f, uint8_t x, uint8_t y, uint16_t color)
 	{
 		uint8_t i;
-		uint16_t temp = 10000;
+		uint16_t temp = 100;
 		uint8_t xt = x;
-		for (i = 0; i < 5; ++i) {
+		if (f < 0) {
+			putCh('-', xt, y, color);
+			xt += 6;
+			f *= -1;
+		} else {
+			putCh(' ', xt, y, color);
+			xt += 6;
+		}
+		for (i = 0; i < 3; ++i) {
 			putCh(((int)(f / temp) % 10) + 48, xt, y, color);
 			xt += 6;
 			temp /= 10;
@@ -203,7 +211,7 @@ namespace LCD
 		putCh('.', xt, y, color);
 		xt += 6;
 		temp = 10;
-		for (i = 0; i < 5; ++i) {
+		for (i = 0; i < 4; ++i) {
 			putCh(((uint32_t)(f * temp) % 10) + 48, xt, y, color);
 			xt += 6;
 			temp *= 10;
